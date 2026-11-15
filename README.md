@@ -1,3 +1,5 @@
+<img src="custom_components/jellyfin_plus/brand/icon.png" alt="Jellyfin Plus icon" width="96" align="right">
+
 # Jellyfin Plus
 
 Instant Jellyfin playback events for Home Assistant: **started, paused, resumed and
