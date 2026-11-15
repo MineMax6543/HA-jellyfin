@@ -138,3 +138,27 @@ async def test_play_pause_toggle_and_debug_log(
     assert [c.args[1] for c in playstate.call_args_list] == ["Pause", "Unpause"]
     assert "-> Pause" in caplog.text
     assert "<- item=Dune paused=False" in caplog.text
+
+
+async def test_web_player_stop_restart_on_resume(
+    hass: HomeAssistant, fake_listener, clock, caplog
+) -> None:
+    """Replays the Jellyfin Web log: resume -> item vanishes -> item back at 0 s."""
+    listener = await _setup(hass, fake_listener)
+    listener.push([at(39)])
+    await hass.async_block_till_done()
+
+    with patch.object(JellyfinClient, "playstate", AsyncMock()) as playstate:
+        await _call(hass, "media_pause")
+        listener.push([at(39, paused=True)])
+        await hass.async_block_till_done()
+        await _call(hass, "media_play")
+        listener.push([atv()])  # session without a playing item for a moment
+        await hass.async_block_till_done()
+        listener.push([at(0)])  # web player started the movie over
+        await hass.async_block_till_done()
+
+    commands = [c.args[1] for c in playstate.call_args_list]
+    assert commands == ["Pause", "Unpause", "Seek"]
+    assert abs(playstate.call_args_list[-1].args[2] / TICKS - 39) < 2
+    assert "restarted the item from the beginning" in caplog.text

@@ -186,7 +186,9 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
             self._last_item_id = None
             self._last_paused = None
             self._paused_override = None
-            self._resume_guard = None
+            # Keep the resume guard: some players (e.g. Jellyfin Web) "resume" by
+            # stopping and restarting the item, so it disappears for a moment.
+            # The guard expires on its own and checks the item id.
             return
         play_state = self._play_state
         reported_paused = bool(play_state.get("IsPaused"))
@@ -216,7 +218,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
             self.entity_id,
             item.get("Name"),
             paused,
-            None if self._position is None else round(self._position),
+            None if self._position is None else round(self._extrapolate(paused) or 0),
             None if reported is None else round(reported),
             play_state.get("PlayMethod"),
         )
