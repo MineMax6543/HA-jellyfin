@@ -12,7 +12,12 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api import JellyfinError
-from .entity import JellyfinDeviceEntity, async_setup_device_entities, supported_commands
+from .entity import (
+    JellyfinDeviceEntity,
+    async_setup_device_entities,
+    command_error,
+    supported_commands,
+)
 
 if TYPE_CHECKING:
     from . import JellyfinConfigEntry
@@ -97,4 +102,4 @@ class JellyfinRemote(JellyfinDeviceEntity, RemoteEntity):
                     if delay:
                         await asyncio.sleep(delay)
         except JellyfinError as err:
-            raise HomeAssistantError(f"Jellyfin command failed: {err}") from err
+            raise command_error(err, self._entry) from err

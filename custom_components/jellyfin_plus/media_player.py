@@ -31,6 +31,7 @@ from .const import TICKS_PER_SECOND
 from .entity import (
     JellyfinDeviceEntity,
     async_setup_device_entities,
+    command_error,
     supported_commands,
     supports_media_control,
 )
@@ -146,7 +147,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         try:
             await coro
         except JellyfinError as err:
-            raise HomeAssistantError(f"Jellyfin command failed: {err}") from err
+            raise command_error(err, self._entry) from err
 
     async def _playstate(self, command: str, seek_ticks: int | None = None) -> None:
         session_id = self._session_id()

@@ -174,6 +174,9 @@ The server update entity asks GitHub for the latest Jellyfin release every 6 hou
 3. Enter the server URL (e.g. `http://192.168.1.10:8096`), username and password.
    Use an **administrator** account to get events for every user; a normal account only
    sees its own playback. Only an access token is stored, not the password.
+   **Jellyfin 12+**: to control apps that are logged in as *another* Jellyfin user, also
+   enable *Allow remote control of other users* for this account (Dashboard → Users →
+   Profile). Without it, commands fail with a message saying so.
 
 ## Example: movie mode
 

@@ -11,13 +11,16 @@ from collections.abc import Callable
 import inspect
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.const import CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .api import Forbidden, JellyfinError
 from .const import DOMAIN, SIGNAL_CONNECTION, SIGNAL_SESSIONS
 
 if TYPE_CHECKING:
@@ -30,6 +33,19 @@ if TYPE_CHECKING:
 NEW_DEVICE_API = "via_device_id" in inspect.signature(
     dr.DeviceRegistry.async_get_or_create
 ).parameters
+
+
+def command_error(err: JellyfinError, entry: JellyfinConfigEntry) -> HomeAssistantError:
+    """Turn a failed control command into a message that says what to do."""
+    if isinstance(err, Forbidden):
+        user = entry.data.get(CONF_USERNAME) or "?"
+        return HomeAssistantError(
+            f"Jellyfin refused the command (403). Since Jellyfin 12, the user "
+            f"'{user}' needs the permission 'Allow remote control of other users' "
+            f"(Jellyfin dashboard -> Users -> {user} -> Profile) to control sessions "
+            f"of other users."
+        )
+    return HomeAssistantError(f"Jellyfin command failed: {err}")
 
 
 def client_unique_id(server_id: str, device_id: str) -> str:

@@ -33,6 +33,10 @@ class CannotConnect(JellyfinError):
     """Server not reachable or answered unexpectedly."""
 
 
+class Forbidden(JellyfinError):
+    """Logged in, but not allowed to do this (HTTP 403)."""
+
+
 class InvalidAuth(JellyfinError):
     """Credentials or token rejected."""
 
@@ -67,8 +71,10 @@ async def _request(
         async with session.request(
             method, url, headers=headers, json=json_body, timeout=REQUEST_TIMEOUT
         ) as resp:
-            if resp.status in (401, 403):
+            if resp.status == 401:
                 raise InvalidAuth(f"{resp.status} from {url}")
+            if resp.status == 403:
+                raise Forbidden(f"{resp.status} from {url}")
             if resp.status >= 400:
                 raise CannotConnect(f"{resp.status} from {url}")
             if resp.content_type == "application/json":
@@ -374,7 +380,7 @@ class JellyfinListener:
                 self._set_connected(False)
                 self._on_auth_failed()
                 return
-            except (CannotConnect, aiohttp.ClientError, TimeoutError) as err:
+            except (JellyfinError, aiohttp.ClientError, TimeoutError) as err:
                 _LOGGER.warning("Jellyfin connection lost: %s (retrying in %ss)", err, delay)
             except asyncio.CancelledError:
                 raise

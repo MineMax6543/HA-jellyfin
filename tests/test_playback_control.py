@@ -196,3 +196,23 @@ async def test_fractional_position_is_exact(hass: HomeAssistant, fake_listener, 
     entity = hass.data["entity_components"]["media_player"].get_entity(PLAYER)
     shift = entity._position_updated_at - attrs["media_position_updated_at"]
     assert abs(shift.total_seconds() - 0.75) < 0.01
+
+
+async def test_forbidden_command_explains_permission(
+    hass: HomeAssistant, fake_listener, clock
+) -> None:
+    """Jellyfin 12 answers 403 when the HA user may not control other users."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.jellyfin_plus.api import Forbidden
+
+    listener = await _setup(hass, fake_listener)
+    listener.push([at(100)])
+    await hass.async_block_till_done()
+    with (
+        patch.object(JellyfinClient, "playstate", AsyncMock(side_effect=Forbidden("403"))),
+        pytest.raises(HomeAssistantError, match="Allow remote control of other users"),
+    ):
+        await _call(hass, "media_pause")
+    # nothing changed optimistically when the command was refused
+    assert hass.states.get(PLAYER).state == "playing"

@@ -16,6 +16,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .api import (
     CannotConnect,
+    Forbidden,
     InvalidAuth,
     JellyfinClient,
     JellyfinError,
@@ -105,7 +106,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
 
     try:
         info = await async_get_system_info(session, url, token, device_id)
-    except InvalidAuth as err:
+    except (InvalidAuth, Forbidden) as err:
         raise ConfigEntryAuthFailed("Jellyfin rejected the access token") from err
     except CannotConnect as err:
         raise ConfigEntryNotReady(f"Cannot reach Jellyfin at {url}: {err}") from err
