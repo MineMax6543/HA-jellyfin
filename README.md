@@ -9,7 +9,14 @@ tied to the client **device**, so it stays the same when an app restarts.
 - **Media player per client**: what's playing, poster, progress, play/pause/stop/seek,
   next/previous, volume, play media with resume, browse and search every library.
 - **Remote per client**: navigation commands (up/down/left/right, select, back, home, …).
-- **Playback events**: started, paused, resumed, stopped, for automations.
+- **Playback events**: started, paused, resumed, stopped, plus **intro / credits / recap**
+  segments, for automations.
+- **Messages on the TV**: show a message over what's playing (e.g. the doorbell).
+- **Library events**: a new movie or episode was added, with poster.
+- **Upcoming episodes calendar** and a **Next up** sensor.
+- **Server monitoring** (admin): streams, transcodes, bandwidth, free space, running tasks,
+  update entities for Jellyfin and its plugins, buttons for library scan / backup / restart,
+  and the activity log (e.g. failed logins).
 
 Can replace Home Assistant's built-in Jellyfin integration, or run alongside it.
 
@@ -73,6 +80,78 @@ Every event carries:
 
 Switching to the next episode produces `playback_stopped` (old episode) followed by
 `playback_started` (new one).
+
+## Intro and credits events
+
+The playback event entities also fire `intro_started` / `intro_ended`,
+`credits_started` / `credits_ended`, `recap_*`, `preview_*` and `commercial_*`, with the
+extra fields `segment`, `segment_start` and `segment_end` (seconds).
+
+Jellyfin only knows these segments if a **segment provider plugin** is installed, for
+example *Intro Skipper*. Without one, these events simply never fire. Between position
+reports from the client, Jellyfin Plus keeps time itself, so `credits_started` fires when
+the credits begin rather than at the next report.
+
+```yaml
+# Lights up slowly when the credits start
+triggers:
+  - trigger: state
+    entity_id: event.living_room_apple_tv_playback
+    attribute: event_type
+    to: credits_started
+actions:
+  - action: light.turn_on
+    target: { area_id: living_room }
+    data: { brightness_pct: 60, transition: 20 }
+```
+
+## Message on the TV
+
+```yaml
+action: jellyfin_plus.send_message
+target:
+  entity_id: media_player.living_room_apple_tv
+data:
+  title: Front door
+  message: Someone is at the door
+  timeout: 10     # seconds, 0 = until dismissed
+  pause: true     # pause playback first
+```
+
+## Library: new items
+
+The **Library** event entity (on the server device) and the bus event
+`jellyfin_plus_library` fire `item_added` for new movies, episodes, series, albums and
+videos, with `title`, `item_type`, `series_name`, `season_number`, `episode_number`,
+`year` and `image_url` (the poster on your Jellyfin server).
+
+## Upcoming episodes and Next up
+
+- **Calendar "Upcoming episodes"**: all-day events on the air date of upcoming episodes of
+  the shows in your library.
+- **Sensor "Next up"**: number of episodes in Jellyfin's *Next up*, the list is in the
+  `episodes` attribute.
+
+## Server (administrator account)
+
+| Entity | What |
+|---|---|
+| Sensor *Active streams* | playing clients, list in `streams` |
+| Sensor *Transcoding streams* | how many of them are transcoded |
+| Sensor *Connected clients* | connected apps, list in `clients` |
+| Sensor *Streaming bandwidth* | best effort: transcode bitrate, else the source bitrate |
+| Sensor *Running tasks* | running scheduled tasks with progress (pushed live) |
+| Sensor *… free space* | per library and for Jellyfin's own data, `used_percent` attribute |
+| Update *Server* | newer Jellyfin release available (install it the way you installed Jellyfin) |
+| Update *… plugin* | per plugin from Jellyfin's catalog; *Install* updates it (restart Jellyfin afterwards) |
+| Buttons | *Scan library*, *Create backup*, *Restart* |
+| Event *Activity* | Jellyfin's activity log: `login_failed`, `user_locked_out`, `task_failed`, `plugin_updated`, … (bus event `jellyfin_plus_activity` gets every entry) |
+
+With a normal account these are left out (Jellyfin doesn't allow them), everything else
+works.
+
+The server update entity asks GitHub for the latest Jellyfin release every 6 hours
+(`api.github.com`, no data about you or your server is sent).
 
 ## Setup
 

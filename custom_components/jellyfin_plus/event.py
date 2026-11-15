@@ -1,8 +1,8 @@
-"""Event entities: one per Jellyfin client plus one for all clients."""
+"""Event entities: per client, all clients, library additions and activity log."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
@@ -11,15 +11,27 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import ACTIONS, DOMAIN, SIGNAL_CONNECTION, SIGNAL_PLAYBACK
+from .const import (
+    ACTION_ITEM_ADDED,
+    ACTIONS,
+    ACTIVITY_IGNORED_ON_ENTITY,
+    ACTIVITY_OTHER,
+    ACTIVITY_TYPES,
+    DOMAIN,
+    SIGNAL_ACTIVITY,
+    SIGNAL_CONNECTION,
+    SIGNAL_LIBRARY,
+    SIGNAL_PLAYBACK,
+)
+from .entity import client_unique_id
 from .sessions import PlaybackEvent
 
 if TYPE_CHECKING:
     from . import JellyfinConfigEntry, JellyfinRuntime
 
 
-def _client_unique_id(server_id: str, device_id: str) -> str:
-    return f"{server_id}_{device_id}"
+# Suffixes of server-level event entities; everything else is a client
+SERVER_EVENT_KEYS = {"all_clients", "library", "activity"}
 
 
 async def async_setup_entry(
@@ -31,7 +43,12 @@ async def async_setup_entry(
     runtime = entry.runtime_data
     server_id = runtime.server_id
     clients: dict[str, JellyfinClientEvent] = {}
-    entities: list[EventEntity] = [JellyfinAllClientsEvent(entry, runtime)]
+    entities: list[EventEntity] = [
+        JellyfinAllClientsEvent(entry, runtime),
+        JellyfinLibraryEvent(entry, runtime),
+    ]
+    if runtime.is_admin:
+        entities.append(JellyfinActivityEvent(entry, runtime))
 
     # Restore clients seen before, so their entities exist right after a restart
     dev_reg = dr.async_get(hass)
@@ -40,7 +57,7 @@ async def async_setup_entry(
         if (
             reg_entry.domain != "event"
             or not reg_entry.unique_id.startswith(prefix)
-            or reg_entry.unique_id == f"{server_id}_all_clients"
+            or reg_entry.unique_id[len(prefix) :] in SERVER_EVENT_KEYS
         ):
             continue
         device_id = reg_entry.unique_id[len(prefix) :]
@@ -156,7 +173,7 @@ class JellyfinClientEvent(_JellyfinEventBase):
         self.device_id = device_id
         if pending is not None:
             self._queued.append(pending)
-        unique_id = _client_unique_id(runtime.server_id, device_id)
+        unique_id = client_unique_id(runtime.server_id, device_id)
         self._attr_unique_id = unique_id
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, unique_id)},
@@ -165,3 +182,61 @@ class JellyfinClientEvent(_JellyfinEventBase):
             model=client,
             via_device=(DOMAIN, runtime.server_id),
         )
+
+
+class _ServerEvent(_JellyfinEventBase):
+    """Event entity on the server device fed by a dispatcher signal."""
+
+    _signal: str
+
+    def __init__(self, entry: JellyfinConfigEntry, runtime: JellyfinRuntime, key: str) -> None:
+        super().__init__(entry, runtime)
+        self._attr_unique_id = f"{runtime.server_id}_{key}"
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, runtime.server_id)})
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, self._signal.format(self._entry.entry_id), self._on_data
+            )
+        )
+
+    @callback
+    def _on_data(self, data: dict[str, Any]) -> None:
+        raise NotImplementedError
+
+
+class JellyfinLibraryEvent(_ServerEvent):
+    """Fires when a movie, episode, series or album is added to the library."""
+
+    _attr_translation_key = "library"
+    _attr_event_types = [ACTION_ITEM_ADDED]
+    _signal = SIGNAL_LIBRARY
+
+    def __init__(self, entry: JellyfinConfigEntry, runtime: JellyfinRuntime) -> None:
+        super().__init__(entry, runtime, "library")
+
+    @callback
+    def _on_data(self, data: dict[str, Any]) -> None:
+        self._trigger_event(ACTION_ITEM_ADDED, dict(data))
+        self.async_write_ha_state()
+
+
+class JellyfinActivityEvent(_ServerEvent):
+    """Fires for Jellyfin activity log entries (failed logins, plugin updates, …)."""
+
+    _attr_translation_key = "activity"
+    _attr_event_types = sorted({*ACTIVITY_TYPES.values(), ACTIVITY_OTHER})
+    _signal = SIGNAL_ACTIVITY
+
+    def __init__(self, entry: JellyfinConfigEntry, runtime: JellyfinRuntime) -> None:
+        super().__init__(entry, runtime, "activity")
+
+    @callback
+    def _on_data(self, data: dict[str, Any]) -> None:
+        if data.get("type") in ACTIVITY_IGNORED_ON_ENTITY:
+            return
+        event_type = ACTIVITY_TYPES.get(data.get("type") or "", ACTIVITY_OTHER)
+        self._trigger_event(event_type, dict(data))
+        self.async_write_ha_state()

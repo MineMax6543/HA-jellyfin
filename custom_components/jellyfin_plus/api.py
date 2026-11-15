@@ -212,6 +212,64 @@ class JellyfinClient:
         )
         return (result or {}).get("Items", [])
 
+    async def upcoming(self, limit: int = 100) -> list[dict[str, Any]]:
+        result = await self._call(
+            "GET",
+            "/Shows/Upcoming",
+            {"userId": self.user_id, "limit": limit, "fields": "PremiereDate"},
+        )
+        return (result or {}).get("Items", [])
+
+    async def media_segments(self, item_id: str) -> list[dict[str, Any]]:
+        """Intro/credits/... segments; empty if no segment provider is installed."""
+        try:
+            result = await self._call("GET", f"/MediaSegments/{item_id}")
+        except CannotConnect:  # 404 for items without segments
+            return []
+        return (result or {}).get("Items", [])
+
+    async def send_message(
+        self, session_id: str, header: str, text: str, timeout_ms: int | None
+    ) -> None:
+        body: dict[str, Any] = {"Header": header, "Text": text}
+        if timeout_ms:
+            body["TimeoutMs"] = timeout_ms
+        await self._call("POST", f"/Sessions/{session_id}/Message", json_body=body)
+
+    # ---- server administration (admin only) -------------------------------
+    async def system_info(self) -> dict[str, Any]:
+        return await self._call("GET", "/System/Info") or {}
+
+    async def storage(self) -> dict[str, Any]:
+        return await self._call("GET", "/System/Info/Storage") or {}
+
+    async def scheduled_tasks(self) -> list[dict[str, Any]]:
+        return await self._call("GET", "/ScheduledTasks", {"isHidden": False}) or []
+
+    async def plugins(self) -> list[dict[str, Any]]:
+        return await self._call("GET", "/Plugins") or []
+
+    async def packages(self) -> list[dict[str, Any]]:
+        return await self._call("GET", "/Packages") or []
+
+    async def install_package(
+        self, name: str, guid: str, version: str, repository_url: str | None = None
+    ) -> None:
+        await self._call(
+            "POST",
+            f"/Packages/Installed/{name}",
+            {"assemblyGuid": guid, "version": version, "repositoryUrl": repository_url},
+        )
+
+    async def library_refresh(self) -> None:
+        await self._call("POST", "/Library/Refresh")
+
+    async def create_backup(self) -> None:
+        await self._call("POST", "/Backup/Create", json_body={})
+
+    async def restart(self) -> None:
+        await self._call("POST", "/System/Restart")
+
     def image_url(self, item_id: str, tag: str | None = None, max_height: int = 500) -> str:
         url = f"{self.url}/Items/{item_id}/Images/Primary?maxHeight={max_height}"
         return f"{url}&tag={tag}" if tag else url
@@ -242,10 +300,11 @@ def _stringify(params: dict[str, Any]) -> dict[str, str]:
 
 
 class JellyfinListener:
-    """Keeps a WebSocket open and hands every session list to a callback.
+    """Keeps a WebSocket open and hands pushed data to callbacks.
 
     Reconnects with backoff. After each (re)connect it fetches the sessions
-    once via REST, because Jellyfin only pushes on changes.
+    once via REST (Jellyfin only pushes on changes) and runs `on_connected`.
+    Sessions go to `on_sessions`; every other message type to `on_message`.
     """
 
     def __init__(
@@ -258,7 +317,14 @@ class JellyfinListener:
         on_connection: Callable[[bool], None],
         on_auth_failed: Callable[[], None],
         create_task: Callable[[Awaitable[Any], str], asyncio.Task],
+        on_message: Callable[[str, Any], None] | None = None,
+        subscriptions: list[str] | None = None,
+        on_connected: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
+        self._on_message = on_message
+        # Periodic listeners to start, e.g. ScheduledTasksInfoStart (admin only)
+        self._subscriptions = ["SessionsStart", *(subscriptions or [])]
+        self._on_connected = on_connected
         self._session = session
         self._url = url
         self._token = token
@@ -334,13 +400,19 @@ class JellyfinListener:
 
         keepalive: asyncio.Task | None = None
         try:
-            await ws.send_json({"MessageType": "SessionsStart", "Data": "0,1000"})
+            for start in self._subscriptions:
+                await ws.send_json({"MessageType": start, "Data": "0,1000"})
             keepalive = asyncio.ensure_future(self._keepalive(ws, DEFAULT_KEEPALIVE_SECONDS))
             # Baseline: Jellyfin only pushes on changes
             self._on_sessions(
                 await async_get_sessions(self._session, self._url, self._token, self._device_id)
             )
             self._set_connected(True)
+            if self._on_connected is not None:
+                try:
+                    await self._on_connected()
+                except JellyfinError as err:
+                    _LOGGER.debug("Post-connect refresh failed: %s", err)
 
             async for msg in ws:
                 if msg.type != aiohttp.WSMsgType.TEXT:
@@ -364,6 +436,8 @@ class JellyfinListener:
                 elif kind in ("ServerRestarting", "ServerShuttingDown"):
                     _LOGGER.info("Jellyfin server is restarting/shutting down")
                     break
+                elif kind and kind != "KeepAlive" and self._on_message is not None:
+                    self._on_message(kind, message.get("Data"))
         finally:
             if keepalive:
                 keepalive.cancel()

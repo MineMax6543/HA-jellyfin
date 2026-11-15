@@ -1,0 +1,26 @@
+send_message:
+  target:
+    entity:
+      integration: jellyfin_plus
+      domain: media_player
+  fields:
+    message:
+      required: true
+      example: "Someone is at the door"
+      selector:
+        text:
+    title:
+      example: "Doorbell"
+      selector:
+        text:
+    timeout:
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 600
+          unit_of_measurement: s
+    pause:
+      default: false
+      selector:
+        boolean:

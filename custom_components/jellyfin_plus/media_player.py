@@ -15,8 +15,11 @@ from homeassistant.components.media_player import (
     SearchMedia,
     SearchMediaQuery,
 )
+import voluptuous as vol
+
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 import homeassistant.util.dt as dt_util
 
@@ -52,6 +55,7 @@ _CONTENT_TYPE = {
     "MusicVideo": MediaType.VIDEO,
     "TvChannel": MediaType.CHANNEL,
 }
+SERVICE_SEND_MESSAGE = "send_message"
 _ENQUEUE = {
     MediaPlayerEnqueue.ADD: "PlayLast",
     MediaPlayerEnqueue.NEXT: "PlayNext",
@@ -66,6 +70,18 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     runtime = entry.runtime_data
+    entity_platform.async_get_current_platform().async_register_entity_service(
+        SERVICE_SEND_MESSAGE,
+        {
+            vol.Required("message"): cv.string,
+            vol.Optional("title", default=""): cv.string,
+            vol.Optional("timeout", default=10): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=600)
+            ),
+            vol.Optional("pause", default=False): cv.boolean,
+        },
+        "async_send_message",
+    )
     async_setup_device_entities(
         hass,
         entry,
@@ -306,6 +322,19 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
                 start_ticks = ticks
         await self._run(
             self._runtime.client.play_items(session_id, [media_id], command, start_ticks)
+        )
+
+    async def async_send_message(
+        self, message: str, title: str = "", timeout: int = 10, pause: bool = False
+    ) -> None:
+        """Show a message on the client's screen, optionally pausing playback."""
+        session_id = self._session_id()
+        if pause and self.state == MediaPlayerState.PLAYING:
+            await self._run(self._runtime.client.playstate(session_id, "Pause"))
+        await self._run(
+            self._runtime.client.send_message(
+                session_id, title or "Home Assistant", message, timeout * 1000 if timeout else None
+            )
         )
 
     # ---- browsing -------------------------------------------------------------

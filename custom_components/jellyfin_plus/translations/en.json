@@ -38,7 +38,17 @@
               "playback_started": "Started",
               "playback_paused": "Paused",
               "playback_resumed": "Resumed",
-              "playback_stopped": "Stopped"
+              "playback_stopped": "Stopped",
+              "intro_started": "Intro started",
+              "intro_ended": "Intro ended",
+              "credits_started": "Credits started",
+              "credits_ended": "Credits ended",
+              "recap_started": "Recap started",
+              "recap_ended": "Recap ended",
+              "preview_started": "Preview started",
+              "preview_ended": "Preview ended",
+              "commercial_started": "Commercial started",
+              "commercial_ended": "Commercial ended"
             }
           }
         }
@@ -51,7 +61,48 @@
               "playback_started": "Started",
               "playback_paused": "Paused",
               "playback_resumed": "Resumed",
-              "playback_stopped": "Stopped"
+              "playback_stopped": "Stopped",
+              "intro_started": "Intro started",
+              "intro_ended": "Intro ended",
+              "credits_started": "Credits started",
+              "credits_ended": "Credits ended",
+              "recap_started": "Recap started",
+              "recap_ended": "Recap ended",
+              "preview_started": "Preview started",
+              "preview_ended": "Preview ended",
+              "commercial_started": "Commercial started",
+              "commercial_ended": "Commercial ended"
+            }
+          }
+        }
+      },
+      "library": {
+        "name": "Library",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "item_added": "Item added"
+            }
+          }
+        }
+      },
+      "activity": {
+        "name": "Activity",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "login_failed": "Login failed",
+              "login_succeeded": "Login succeeded",
+              "user_locked_out": "User locked out",
+              "task_failed": "Task failed",
+              "plugin_installed": "Plugin installed",
+              "plugin_updated": "Plugin updated",
+              "plugin_uninstalled": "Plugin uninstalled",
+              "plugin_install_failed": "Plugin installation failed",
+              "user_created": "User created",
+              "user_deleted": "User deleted",
+              "user_password_changed": "User password changed",
+              "other": "Other"
             }
           }
         }
@@ -60,6 +111,74 @@
     "remote": {
       "remote": {
         "name": "Remote"
+      }
+    },
+    "sensor": {
+      "active_streams": {
+        "name": "Active streams"
+      },
+      "transcoding_streams": {
+        "name": "Transcoding streams"
+      },
+      "connected_clients": {
+        "name": "Connected clients"
+      },
+      "streaming_bandwidth": {
+        "name": "Streaming bandwidth"
+      },
+      "running_tasks": {
+        "name": "Running tasks"
+      },
+      "next_up": {
+        "name": "Next up"
+      },
+      "server_data_free": {
+        "name": "Server data free space"
+      },
+      "library_free": {
+        "name": "{library} free space"
+      }
+    },
+    "calendar": {
+      "upcoming": {
+        "name": "Upcoming episodes"
+      }
+    },
+    "update": {
+      "server": {
+        "name": "Server"
+      }
+    },
+    "button": {
+      "library_scan": {
+        "name": "Scan library"
+      },
+      "create_backup": {
+        "name": "Create backup"
+      }
+    }
+  },
+  "services": {
+    "send_message": {
+      "name": "Send message",
+      "description": "Shows a message on the Jellyfin client's screen.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "Text to show."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Heading of the message (default: Home Assistant)."
+        },
+        "timeout": {
+          "name": "Timeout",
+          "description": "Seconds until the message disappears (0 = stays until dismissed)."
+        },
+        "pause": {
+          "name": "Pause playback",
+          "description": "Pause what's playing before showing the message."
+        }
       }
     }
   }
