@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "jellyfin_plus"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 CLIENT_NAME = "Jellyfin Plus"
 DEVICE_NAME = "Home Assistant"
 
@@ -31,3 +31,4 @@ DEFAULT_KEEPALIVE_SECONDS = 30
 
 SIGNAL_PLAYBACK = f"{DOMAIN}_playback_{{}}"
 SIGNAL_CONNECTION = f"{DOMAIN}_connection_{{}}"
+SIGNAL_SESSIONS = f"{DOMAIN}_sessions_{{}}"

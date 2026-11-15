@@ -1,8 +1,8 @@
-"""Jellyfin Plus: instant Jellyfin playback events for Home Assistant."""
+"""Jellyfin Plus: instant playback events, media players and remotes for Jellyfin."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import Any
 
@@ -17,22 +17,25 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from .api import (
     CannotConnect,
     InvalidAuth,
+    JellyfinClient,
     JellyfinListener,
     async_get_system_info,
 )
 from .const import (
     CONF_DEVICE_ID,
     CONF_TOKEN,
+    CONF_USER_ID,
     DOMAIN,
     EVENT_PLAYBACK,
     SIGNAL_CONNECTION,
     SIGNAL_PLAYBACK,
+    SIGNAL_SESSIONS,
 )
 from .sessions import PlaybackEvent, SessionTracker
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.EVENT]
+PLATFORMS = [Platform.EVENT, Platform.MEDIA_PLAYER, Platform.REMOTE]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
@@ -44,7 +47,13 @@ class JellyfinRuntime:
     server_name: str
     server_version: str | None
     tracker: SessionTracker
+    client: JellyfinClient
     listener: JellyfinListener | None = None
+    # Latest session per client device (device_id -> Jellyfin session dict)
+    sessions: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def session_for(self, device_id: str) -> dict[str, Any] | None:
+        return self.sessions.get(device_id)
 
     @property
     def connected(self) -> bool:
@@ -73,6 +82,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
         server_name=info.get("ServerName") or "Jellyfin",
         server_version=info.get("Version"),
         tracker=SessionTracker(own_device_id=device_id),
+        client=JellyfinClient(
+            session, url, token, device_id, entry.data.get(CONF_USER_ID)
+        ),
     )
     entry.runtime_data = runtime
 
@@ -90,6 +102,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
 
     @callback
     def _on_sessions(sessions: list[dict[str, Any]]) -> None:
+        runtime.sessions = _latest_by_device(sessions, device_id)
+        async_dispatcher_send(hass, SIGNAL_SESSIONS.format(entry.entry_id))
         for event in runtime.tracker.update(sessions):
             _handle_event(hass, entry, runtime, event)
 
@@ -113,6 +127,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
     )
     runtime.listener.start()
     return True
+
+
+def _latest_by_device(
+    sessions: list[dict[str, Any]], own_device_id: str
+) -> dict[str, dict[str, Any]]:
+    """One session per device: the most recently active one."""
+    result: dict[str, dict[str, Any]] = {}
+    for session in sessions:
+        device_id = session.get("DeviceId")
+        if not device_id or device_id == own_device_id:
+            continue
+        current = result.get(device_id)
+        if current is None or (session.get("LastActivityDate") or "") >= (
+            current.get("LastActivityDate") or ""
+        ):
+            result[device_id] = session
+    return result
 
 
 @callback

@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 import aiohttp
+from yarl import URL
 
 from .const import (
     CLIENT_NAME,
@@ -117,6 +118,127 @@ async def async_get_sessions(
         session, "GET", f"{url}/Sessions", auth_header(device_id, token)
     )
     return result if isinstance(result, list) else []
+
+
+class JellyfinClient:
+    """Authenticated REST calls used by the entities."""
+
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        token: str,
+        device_id: str,
+        user_id: str | None,
+    ) -> None:
+        self.session = session
+        self.url = url
+        self.user_id = user_id
+        self._headers = auth_header(device_id, token)
+
+    async def _call(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+    ) -> Any:
+        url = f"{self.url}{path}"
+        if params:
+            query = {k: v for k, v in params.items() if v is not None}
+            url = str(URL(url).with_query(_stringify(query)))
+        return await _request(self.session, method, url, self._headers, json_body)
+
+    # ---- session control -------------------------------------------------
+    async def playstate(
+        self, session_id: str, command: str, seek_ticks: int | None = None
+    ) -> None:
+        """Stop, Pause, Unpause, PlayPause, NextTrack, PreviousTrack, Seek."""
+        await self._call(
+            "POST",
+            f"/Sessions/{session_id}/Playing/{command}",
+            {"seekPositionTicks": seek_ticks},
+        )
+
+    async def general_command(
+        self, session_id: str, name: str, arguments: dict[str, Any] | None = None
+    ) -> None:
+        """VolumeUp, SetVolume, Mute, MoveUp, Select, Back, GoHome, …"""
+        body: dict[str, Any] = {"Name": name}
+        if arguments:
+            body["Arguments"] = {k: str(v) for k, v in arguments.items()}
+        await self._call("POST", f"/Sessions/{session_id}/Command", json_body=body)
+
+    async def play_items(
+        self,
+        session_id: str,
+        item_ids: list[str],
+        play_command: str = "PlayNow",
+        start_ticks: int | None = None,
+    ) -> None:
+        """PlayNow / PlayNext / PlayLast / PlayShuffle the given items."""
+        await self._call(
+            "POST",
+            f"/Sessions/{session_id}/Playing",
+            {
+                "playCommand": play_command,
+                "itemIds": ",".join(item_ids),
+                "startPositionTicks": start_ticks,
+            },
+        )
+
+    # ---- library ---------------------------------------------------------
+    async def user_views(self) -> list[dict[str, Any]]:
+        result = await self._call("GET", "/UserViews", {"userId": self.user_id})
+        return (result or {}).get("Items", [])
+
+    async def items(self, **params: Any) -> list[dict[str, Any]]:
+        result = await self._call("GET", "/Items", {"userId": self.user_id, **params})
+        return (result or {}).get("Items", [])
+
+    async def item(self, item_id: str) -> dict[str, Any] | None:
+        items = await self.items(ids=item_id)
+        return items[0] if items else None
+
+    async def resume_items(self, limit: int = 30) -> list[dict[str, Any]]:
+        result = await self._call(
+            "GET", "/UserItems/Resume", {"userId": self.user_id, "limit": limit}
+        )
+        return (result or {}).get("Items", [])
+
+    async def next_up(self, limit: int = 30) -> list[dict[str, Any]]:
+        result = await self._call(
+            "GET", "/Shows/NextUp", {"userId": self.user_id, "limit": limit}
+        )
+        return (result or {}).get("Items", [])
+
+    def image_url(self, item_id: str, tag: str | None = None, max_height: int = 500) -> str:
+        url = f"{self.url}/Items/{item_id}/Images/Primary?maxHeight={max_height}"
+        return f"{url}&tag={tag}" if tag else url
+
+    async def fetch_image(self, url: str) -> tuple[bytes | None, str | None]:
+        """Download an image with authentication (for HA's image proxy)."""
+        try:
+            async with self.session.get(
+                url, headers=self._headers, timeout=REQUEST_TIMEOUT
+            ) as resp:
+                if resp.status != 200:
+                    return None, None
+                return await resp.read(), resp.content_type
+        except (aiohttp.ClientError, TimeoutError):
+            return None, None
+
+
+def _stringify(params: dict[str, Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for key, value in params.items():
+        if isinstance(value, bool):
+            out[key] = "true" if value else "false"
+        elif isinstance(value, (list, tuple)):
+            out[key] = ",".join(str(v) for v in value)
+        else:
+            out[key] = str(value)
+    return out
 
 
 class JellyfinListener:

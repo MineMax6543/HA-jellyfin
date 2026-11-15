@@ -37,7 +37,11 @@ async def async_setup_entry(
     dev_reg = dr.async_get(hass)
     prefix = f"{server_id}_"
     for reg_entry in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id):
-        if reg_entry.domain != "event" or not reg_entry.unique_id.startswith(prefix):
+        if (
+            reg_entry.domain != "event"
+            or not reg_entry.unique_id.startswith(prefix)
+            or reg_entry.unique_id == f"{server_id}_all_clients"
+        ):
             continue
         device_id = reg_entry.unique_id[len(prefix) :]
         device = dev_reg.async_get_device(identifiers={(DOMAIN, reg_entry.unique_id)})

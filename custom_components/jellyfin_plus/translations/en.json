@@ -56,6 +56,11 @@
           }
         }
       }
+    },
+    "remote": {
+      "remote": {
+        "name": "Remote"
+      }
     }
   }
 }

@@ -2,14 +2,57 @@
 
 # Jellyfin Plus
 
-Instant Jellyfin playback events for Home Assistant: **started, paused, resumed and
-stopped**, pushed by the Jellyfin server over a WebSocket the moment they happen (no
-polling). Use them to dim the lights when a movie starts, bring them back up on pause, or
-send a notification when someone starts watching.
+A more reliable Jellyfin integration for Home Assistant. Everything is pushed by the
+Jellyfin server over a WebSocket the moment it happens (no polling), and every entity is
+tied to the client **device**, so it stays the same when an app restarts.
 
-Runs alongside Home Assistant's built-in Jellyfin integration.
+- **Media player per client**: what's playing, poster, progress, play/pause/stop/seek,
+  next/previous, volume, play media with resume, browse and search every library.
+- **Remote per client**: navigation commands (up/down/left/right, select, back, home, …).
+- **Playback events**: started, paused, resumed, stopped, for automations.
 
-## What you get
+Can replace Home Assistant's built-in Jellyfin integration, or run alongside it.
+
+## Why not the built-in integration?
+
+| | Built-in | Jellyfin Plus |
+|---|---|---|
+| Updates | polls every 10 s | pushed instantly |
+| Entity tied to | the session (new entity whenever an app restarts, old one stays unavailable) | the device (always the same entity) |
+| App closed | `unavailable` | `off` |
+| Playback events | – | ✅ |
+| Browse | music, movies, TV | every library, plus *Continue watching* and *Next up* |
+| Play media | starts from the beginning | resumes where you left off |
+
+## Media player
+
+One `media_player` per client that supports remote control (Jellyfin apps on Apple TV,
+iPhone, Android TV, the web app, …), created the first time the client connects and kept
+from then on.
+
+- **States**: `off` (app not connected), `idle` (connected, nothing playing), `playing`,
+  `paused`. Only a lost connection to the server makes it `unavailable`.
+- **Controls**: play, pause, stop, seek, next/previous, plus volume and mute when the
+  client supports them.
+- **Play media**: plays a Jellyfin item on that client and resumes where you left off;
+  *add* / *play next* queue instead.
+- **Browse / search**: every library, with *Continue watching* and *Next up* at the top.
+
+## Remote
+
+`remote.send_command` with Jellyfin command names (`MoveUp`, `Select`, `Back`, `GoHome`,
+…) or the short forms `up`, `down`, `left`, `right`, `select`, `back`, `home`, `menu`.
+The entity lists what the client supports in its `supported_commands` attribute.
+
+```yaml
+action: remote.send_command
+target:
+  entity_id: remote.living_room_apple_tv_remote
+data:
+  command: [down, down, select]
+```
+
+## Playback events
 
 - **An event entity per Jellyfin client** (e.g. *Living Room Apple TV Playback*). It is
   created the first time that client plays something and survives restarts.
