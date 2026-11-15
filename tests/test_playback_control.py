@@ -162,3 +162,37 @@ async def test_web_player_stop_restart_on_resume(
     assert commands == ["Pause", "Unpause", "Seek"]
     assert abs(playstate.call_args_list[-1].args[2] / TICKS - 39) < 2
     assert "restarted the item from the beginning" in caplog.text
+
+
+async def test_stale_position_repeats_do_not_pull_back(
+    hass: HomeAssistant, fake_listener, clock, freezer
+) -> None:
+    """Pushes caused by other sessions repeat this player's old position."""
+    listener = await _setup(hass, fake_listener)
+    listener.push([at(100)])
+    await hass.async_block_till_done()
+    first = hass.states.get(PLAYER).attributes["media_position_updated_at"]
+
+    freezer.tick(6)  # 6 s later another device changes -> same old 100 s again
+    listener.push([at(100)])
+    await hass.async_block_till_done()
+    state = hass.states.get(PLAYER)
+    assert state.attributes["media_position"] == 100
+    assert state.attributes["media_position_updated_at"] == first  # still extrapolating
+
+    # a fresh report that really differs (user seeked on the device) wins
+    freezer.tick(1)
+    listener.push([at(300)])
+    await hass.async_block_till_done()
+    assert hass.states.get(PLAYER).attributes["media_position"] == 300
+
+
+async def test_fractional_position_is_exact(hass: HomeAssistant, fake_listener, clock) -> None:
+    listener = await _setup(hass, fake_listener)
+    listener.push([at(42.75)])
+    await hass.async_block_till_done()
+    attrs = hass.states.get(PLAYER).attributes
+    assert attrs["media_position"] == 42
+    entity = hass.data["entity_components"]["media_player"].get_entity(PLAYER)
+    shift = entity._position_updated_at - attrs["media_position_updated_at"]
+    assert abs(shift.total_seconds() - 0.75) < 0.01

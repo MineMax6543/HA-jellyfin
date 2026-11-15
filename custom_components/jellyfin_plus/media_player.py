@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -43,7 +43,7 @@ _LOGGER = logging.getLogger(__name__)
 # Show the expected state right after a command until the app confirms it
 OPTIMISTIC_SECONDS = 8
 # A reported position this far off from our extrapolation counts as a real jump
-POSITION_TOLERANCE = 3
+POSITION_TOLERANCE = 2
 # Resume protection: if an app restarts the item after "Unpause", seek back
 RESUME_GUARD_SECONDS = 20
 RESTART_THRESHOLD = 5
@@ -120,6 +120,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         self._position_updated_at: datetime | None = None
         self._last_item_id: str | None = None
         self._last_paused: bool | None = None
+        self._last_ticks: int | float | None = None
         self._paused_override: bool | None = None
         self._override_until = 0.0
         # (item id, position, deadline) while watching for a restart after resume
@@ -185,6 +186,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
             self._anchor(None)
             self._last_item_id = None
             self._last_paused = None
+            self._last_ticks = None
             self._paused_override = None
             # Keep the resume guard: some players (e.g. Jellyfin Web) "resume" by
             # stopping and restarting the item, so it disappears for a moment.
@@ -201,17 +203,22 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         ticks = play_state.get("PositionTicks")
         reported = ticks / TICKS_PER_SECOND if isinstance(ticks, (int, float)) else None
         item_changed = item.get("Id") != self._last_item_id
+        # Jellyfin pushes the whole session list whenever *any* session changes,
+        # repeating this player's position from its last own report. Only a
+        # changed value is a fresh report; repeats are stale and must not move
+        # the anchor (that made the position jump back).
+        fresh = reported is not None and (item_changed or ticks != self._last_ticks)
         paused = self._paused
         expected = self._extrapolate(self._last_paused)
-        if reported is not None and (
-            item_changed
-            or expected is None
-            or paused != self._last_paused
-            or abs(reported - expected) > POSITION_TOLERANCE
-        ):
+        if reported is not None and (item_changed or expected is None):
             self._anchor(reported)
-        elif paused != self._last_paused and expected is not None:
-            self._anchor(expected)
+        elif paused != self._last_paused:
+            # play/pause flipped: a fresh report is exact, else keep our estimate
+            self._anchor(reported if fresh else expected)
+        elif fresh and abs(reported - expected) > POSITION_TOLERANCE:
+            self._anchor(reported)
+        if reported is not None:
+            self._last_ticks = ticks
 
         _LOGGER.debug(
             "%s: <- item=%s paused=%s position=%s (reported %s, method %s)",
@@ -224,7 +231,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         )
         self._last_item_id = item.get("Id")
         self._last_paused = paused
-        if reported is not None:
+        if fresh:
             self._check_resume_guard(item.get("Id"), reported)
 
     @callback
@@ -351,7 +358,11 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
 
     @property
     def media_position_updated_at(self) -> datetime | None:
-        return self._position_updated_at
+        # media_position is a whole second; shift the reference time by the cut
+        # fraction so HA's extrapolated position stays exact
+        if self._position_updated_at is None or self._position is None:
+            return self._position_updated_at
+        return self._position_updated_at - timedelta(seconds=self._position % 1)
 
     @property
     def volume_level(self) -> float | None:
