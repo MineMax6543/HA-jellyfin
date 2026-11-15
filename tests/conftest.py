@@ -38,6 +38,8 @@ UPCOMING = [
 NEXT_UP = [{"Id": "nx1", "Name": "Pilot", "SeriesName": "Severance", "ParentIndexNumber": 1,
             "IndexNumber": 1}]
 TASKS = [{"Id": "t1", "Name": "Scan Media Library", "State": "Idle"}]
+COUNTS = {"MovieCount": 412, "SeriesCount": 37, "EpisodeCount": 1503, "SongCount": 0,
+          "AlbumCount": 0, "ArtistCount": 0, "BoxSetCount": 12, "BookCount": 0}
 
 
 @pytest.fixture(autouse=True)
@@ -96,6 +98,7 @@ def fake_listener() -> Generator[type[FakeListener]]:
         patch.object(JellyfinClient, "upcoming", AsyncMock(return_value=UPCOMING)),
         patch.object(JellyfinClient, "next_up", AsyncMock(return_value=NEXT_UP)),
         patch.object(JellyfinClient, "scheduled_tasks", AsyncMock(return_value=TASKS)),
+        patch.object(JellyfinClient, "item_counts", AsyncMock(return_value=COUNTS)),
         patch.object(JellyfinClient, "media_segments", AsyncMock(return_value=[])),
         patch.object(
             JellyfinCoordinator,

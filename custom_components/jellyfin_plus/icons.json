@@ -1,0 +1,48 @@
+{
+  "entity": {
+    "sensor": {
+      "movies": {
+        "default": "mdi:movie-open"
+      },
+      "series": {
+        "default": "mdi:television-classic"
+      },
+      "episodes": {
+        "default": "mdi:television-play"
+      },
+      "songs": {
+        "default": "mdi:music-note"
+      },
+      "albums": {
+        "default": "mdi:album"
+      },
+      "artists": {
+        "default": "mdi:account-music"
+      },
+      "music_videos": {
+        "default": "mdi:music-box"
+      },
+      "collections": {
+        "default": "mdi:folder-multiple-image"
+      },
+      "books": {
+        "default": "mdi:book-open-variant"
+      },
+      "next_up": {
+        "default": "mdi:playlist-play"
+      },
+      "active_streams": {
+        "default": "mdi:play-network"
+      },
+      "transcoding_streams": {
+        "default": "mdi:swap-horizontal"
+      },
+      "connected_clients": {
+        "default": "mdi:devices"
+      },
+      "running_tasks": {
+        "default": "mdi:progress-clock"
+      }
+    }
+  }
+}

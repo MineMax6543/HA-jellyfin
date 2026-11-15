@@ -145,6 +145,9 @@ videos, with `title`, `item_type`, `series_name`, `season_number`, `episode_numb
   the shows in your library.
 - **Sensor "Next up"**: number of episodes in Jellyfin's *Next up*, the list is in the
   `episodes` attribute.
+- **Library counts**: *Movies*, *Series*, *Episodes*, *Songs*, *Albums*, *Artists*, plus
+  *Music videos*, *Collections* and *Books* if your library has any (as seen by the
+  configured user, refreshed every 5 minutes).
 
 ## Server (administrator account)
 

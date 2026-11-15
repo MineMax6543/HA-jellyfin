@@ -241,3 +241,15 @@ async def test_non_admin_gets_no_admin_entities(hass: HomeAssistant, fake_listen
     assert _eid(hass, "sensor", "active_streams") is not None
     assert _eid(hass, "calendar", "upcoming") is not None
     assert _eid(hass, "event", "library") is not None
+
+
+async def test_count_sensors(hass: HomeAssistant, fake_listener) -> None:
+    await _setup(hass)
+    assert hass.states.get(_eid(hass, "sensor", "count_movies")).state == "412"
+    assert hass.states.get(_eid(hass, "sensor", "count_episodes")).state == "1503"
+    assert hass.states.get(_eid(hass, "sensor", "count_songs")).state == "0"  # always created
+    assert hass.states.get(_eid(hass, "sensor", "count_collections")).state == "12"
+    assert _eid(hass, "sensor", "count_books") is None  # optional and empty
+    assert hass.states.get(_eid(hass, "sensor", "count_movies")).attributes["friendly_name"].endswith(
+        "Movies"
+    )

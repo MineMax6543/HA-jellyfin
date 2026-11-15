@@ -58,6 +58,7 @@ class JellyfinCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         parts: dict[str, Any] = {
             "upcoming": self.client.upcoming,
             "next_up": self.client.next_up,
+            "counts": self.client.item_counts,
         }
         if self.is_admin:
             parts |= {

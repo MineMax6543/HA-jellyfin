@@ -137,6 +137,33 @@
       },
       "library_free": {
         "name": "{library} free space"
+      },
+      "movies": {
+        "name": "Movies"
+      },
+      "series": {
+        "name": "Series"
+      },
+      "episodes": {
+        "name": "Episodes"
+      },
+      "songs": {
+        "name": "Songs"
+      },
+      "albums": {
+        "name": "Albums"
+      },
+      "artists": {
+        "name": "Artists"
+      },
+      "music_videos": {
+        "name": "Music videos"
+      },
+      "collections": {
+        "name": "Collections"
+      },
+      "books": {
+        "name": "Books"
       }
     },
     "calendar": {

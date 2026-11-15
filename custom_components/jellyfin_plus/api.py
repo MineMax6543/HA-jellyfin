@@ -218,6 +218,10 @@ class JellyfinClient:
         )
         return (result or {}).get("Items", [])
 
+    async def item_counts(self) -> dict[str, Any]:
+        """Number of movies, series, episodes, songs, ... visible to this user."""
+        return await self._call("GET", "/Items/Counts", {"userId": self.user_id}) or {}
+
     async def upcoming(self, limit: int = 100) -> list[dict[str, Any]]:
         result = await self._call(
             "GET",

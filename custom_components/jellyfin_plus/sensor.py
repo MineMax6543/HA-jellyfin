@@ -132,6 +132,12 @@ async def async_setup_entry(
         if runtime.is_admin or not desc.admin_only
     ]
     entities.append(JellyfinNextUpSensor(entry, runtime))
+    counts = (runtime.coordinator.data or {}).get("counts") or {}
+    entities.extend(
+        JellyfinCountSensor(runtime, key, field)
+        for key, field, always in COUNT_SENSORS
+        if always or (counts.get(field) or 0) > 0
+    )
     storage = (runtime.coordinator.data or {}).get("storage") or {}
     if runtime.is_admin:
         if storage.get("ProgramDataFolder"):
@@ -198,6 +204,36 @@ class _CoordinatorSensor(CoordinatorEntity, SensorEntity):
         self._runtime = runtime
         self._attr_unique_id = f"{runtime.server_id}_{key}"
         self._attr_device_info = _server_device(runtime)
+
+
+# (translation key, Jellyfin ItemCounts field, always created)
+COUNT_SENSORS: tuple[tuple[str, str, bool], ...] = (
+    ("movies", "MovieCount", True),
+    ("series", "SeriesCount", True),
+    ("episodes", "EpisodeCount", True),
+    ("songs", "SongCount", True),
+    ("albums", "AlbumCount", True),
+    ("artists", "ArtistCount", True),
+    ("music_videos", "MusicVideoCount", False),
+    ("collections", "BoxSetCount", False),
+    ("books", "BookCount", False),
+)
+
+
+class JellyfinCountSensor(_CoordinatorSensor):
+    """Number of items of one type in the library (as seen by this user)."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, runtime: JellyfinRuntime, key: str, field: str) -> None:
+        super().__init__(runtime, f"count_{key}")
+        self._field = field
+        self._attr_translation_key = key
+
+    @property
+    def native_value(self) -> int | None:
+        value = ((self.coordinator.data or {}).get("counts") or {}).get(self._field)
+        return value if isinstance(value, int) else None
 
 
 class JellyfinNextUpSensor(_CoordinatorSensor):
