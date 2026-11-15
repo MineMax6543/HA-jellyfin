@@ -50,9 +50,14 @@ is shown right away and corrected by the app's next report (or after 8 s if the 
 never confirms). Some apps restart the item when asked to resume; Jellyfin Plus notices
 this and seeks back to where you paused, logging a warning that names the player.
 
-**Troubleshooting**: *Settings → Devices & services → Jellyfin Plus → ⋮ → Enable debug
-logging* logs every command sent (`-> Pause`) and every state received
-(`<- item=… paused=… position=…`).
+**Troubleshooting**:
+- *Settings → Devices & services → Jellyfin Plus → ⋮ → Download diagnostics* works at any
+  time, no debug logging needed: it contains the current sessions, each media player's
+  internal state and the last 300 received updates, sent commands and position decisions
+  (tokens, IPs and user names are removed). Download it right after something looked
+  wrong.
+- *⋮ → Enable debug logging* additionally logs every command (`-> Pause`) and every update
+  with the shown, reported and expected position and why it was (not) corrected.
 
 ## Remote
 

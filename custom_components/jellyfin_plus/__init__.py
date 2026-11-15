@@ -43,6 +43,7 @@ from .const import (
 from .coordinator import JellyfinCoordinator
 from .segments import SegmentWatcher
 from .sessions import PlaybackEvent, SessionTracker
+from .trace import Trace, session_summary
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,6 +79,10 @@ class JellyfinRuntime:
     tasks: list[dict[str, Any]] = field(default_factory=list)
     # Device registry id of the server device (parent of the client devices)
     server_device_id: str | None = None
+    # Ring buffer for "Download diagnostics"
+    trace: Trace = field(default_factory=Trace)
+    # Live media player entities (entity_id -> entity), for diagnostics
+    players: dict[str, Any] = field(default_factory=dict)
 
     def session_for(self, device_id: str) -> dict[str, Any] | None:
         return self.sessions.get(device_id)
@@ -142,6 +147,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
     @callback
     def _on_sessions(sessions: list[dict[str, Any]]) -> None:
         runtime.sessions = _latest_by_device(sessions, device_id)
+        runtime.trace.add(
+            "sessions", sessions=[session_summary(s) for s in runtime.sessions.values()]
+        )
         async_dispatcher_send(hass, SIGNAL_SESSIONS.format(entry.entry_id))
         for event in runtime.tracker.update(sessions):
             _emit(event)
@@ -149,6 +157,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
 
     @callback
     def _on_message(kind: str, data: Any) -> None:
+        runtime.trace.add("message", type=kind)
         if kind == "LibraryChanged" and isinstance(data, dict):
             added = [i for i in data.get("ItemsAdded") or [] if isinstance(i, str)]
             if added:
@@ -171,6 +180,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
 
     @callback
     def _on_connection(connected: bool) -> None:
+        runtime.trace.add("connection", connected=connected)
         async_dispatcher_send(hass, SIGNAL_CONNECTION.format(entry.entry_id), connected)
 
     @callback

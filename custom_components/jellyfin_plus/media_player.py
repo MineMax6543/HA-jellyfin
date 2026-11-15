@@ -157,6 +157,13 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
             "" if seek_ticks is None else f" {seek_ticks / TICKS_PER_SECOND:.0f}s",
             session_id,
         )
+        self._runtime.trace.add(
+            "command",
+            entity=self.entity_id,
+            command=command,
+            seek=None if seek_ticks is None else round(seek_ticks / TICKS_PER_SECOND, 2),
+            session=session_id,
+        )
         await self._run(self._runtime.client.playstate(session_id, command, seek_ticks))
 
     # ---- position / state bookkeeping --------------------------------------------
@@ -210,24 +217,51 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         fresh = reported is not None and (item_changed or ticks != self._last_ticks)
         paused = self._paused
         expected = self._extrapolate(self._last_paused)
-        if reported is not None and (item_changed or expected is None):
+        deviation = (
+            None if reported is None or expected is None else round(reported - expected, 2)
+        )
+        if reported is None:
+            reason = "no position reported"
+        elif item_changed or expected is None:
             self._anchor(reported)
+            reason = "new item" if item_changed else "first position"
         elif paused != self._last_paused:
             # play/pause flipped: a fresh report is exact, else keep our estimate
             self._anchor(reported if fresh else expected)
-        elif fresh and abs(reported - expected) > POSITION_TOLERANCE:
+            reason = "play/pause changed, " + ("took report" if fresh else "kept estimate")
+        elif not fresh:
+            reason = "stale repeat ignored"
+        elif abs(reported - expected) > POSITION_TOLERANCE:
             self._anchor(reported)
+            reason = f"corrected by {deviation:+}s"
+        else:
+            reason = "fresh report, within tolerance"
         if reported is not None:
             self._last_ticks = ticks
 
+        shown = None if self._position is None else self._extrapolate(paused)
         _LOGGER.debug(
-            "%s: <- item=%s paused=%s position=%s (reported %s, method %s)",
+            "%s: <- item=%s paused=%s shown=%s reported=%s expected=%s -> %s (method %s, checkin %s)",
             self.entity_id,
             item.get("Name"),
             paused,
-            None if self._position is None else round(self._extrapolate(paused) or 0),
-            None if reported is None else round(reported),
+            None if shown is None else round(shown, 1),
+            None if reported is None else round(reported, 1),
+            None if expected is None else round(expected, 1),
+            reason,
             play_state.get("PlayMethod"),
+            (self.session or {}).get("LastPlaybackCheckIn"),
+        )
+        self._runtime.trace.add(
+            "position",
+            entity=self.entity_id,
+            item=item.get("Name"),
+            paused=paused,
+            shown=None if shown is None else round(shown, 2),
+            reported=None if reported is None else round(reported, 2),
+            expected=None if expected is None else round(expected, 2),
+            deviation=deviation,
+            decision=reason,
         )
         self._last_item_id = item.get("Id")
         self._last_paused = paused
@@ -275,7 +309,43 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        self._runtime.players[self.entity_id] = self
+        self.async_on_remove(lambda: self._runtime.players.pop(self.entity_id, None))
         self._sync_from_session()
+
+    def debug_state(self) -> dict[str, Any]:
+        """Internal state for the diagnostics download."""
+        now = time.monotonic()
+        guard = self._resume_guard
+        return {
+            "state": self.state,
+            "session_id": (self.session or {}).get("Id"),
+            "item": (self._item or {}).get("Name"),
+            "anchor_position": self._position,
+            "anchor_time": self._position_updated_at.isoformat()
+            if self._position_updated_at
+            else None,
+            "shown_position_now": self._extrapolate(self._last_paused),
+            "media_position": self.media_position,
+            "media_position_updated_at": self.media_position_updated_at.isoformat()
+            if self.media_position_updated_at
+            else None,
+            "last_reported": None
+            if self._last_ticks is None
+            else self._last_ticks / TICKS_PER_SECOND,
+            "last_paused": self._last_paused,
+            "paused_override": self._paused_override,
+            "override_seconds_left": round(max(self._override_until - now, 0), 1)
+            if self._paused_override is not None
+            else None,
+            "resume_guard": None
+            if guard is None
+            else {
+                "item_id": guard[0],
+                "position": guard[1],
+                "seconds_left": round(max(guard[2] - now, 0), 1),
+            },
+        }
 
     @callback
     def _on_sessions(self) -> None:
