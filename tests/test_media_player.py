@@ -213,3 +213,20 @@ async def test_browse_and_search() -> None:
 
     found = await async_search(client, "dune", thumb)
     assert found[0].title == "Dune (2021)"
+
+
+async def test_remote_turn_off_stops_playback(hass: HomeAssistant, fake_listener) -> None:
+    await _setup(hass)
+    listener = fake_listener.instances[0]
+    listener.push([atv(item=MOVIE)])
+    await hass.async_block_till_done()
+    remote = _eid(hass, "remote")
+
+    with patch.object(JellyfinClient, "playstate", AsyncMock()) as playstate:
+        await hass.services.async_call("remote", "turn_off", {"entity_id": remote}, blocking=True)
+        # turn_on and turn_off while idle no longer raise NotImplementedError
+        await hass.services.async_call("remote", "turn_on", {"entity_id": remote}, blocking=True)
+        listener.push([atv()])
+        await hass.async_block_till_done()
+        await hass.services.async_call("remote", "turn_off", {"entity_id": remote}, blocking=True)
+    assert [c.args[:2] for c in playstate.call_args_list] == [("s1", "Stop")]

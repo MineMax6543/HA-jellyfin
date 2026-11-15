@@ -77,6 +77,21 @@ class JellyfinRemote(JellyfinDeviceEntity, RemoteEntity):
     def is_on(self) -> bool:
         return self.session is not None
 
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """The remote is 'on' while the app is connected; nothing to do."""
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Clients can't be powered off through Jellyfin: stop playback instead."""
+        session = self.session
+        if not session or not session.get("Id"):
+            return  # app not connected: already "off"
+        if not session.get("NowPlayingItem"):
+            return
+        try:
+            await self._runtime.client.playstate(session["Id"], "Stop")
+        except JellyfinError as err:
+            raise command_error(err, self._entry) from err
+
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {"supported_commands": sorted(supported_commands(self.session))}
