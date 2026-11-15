@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -23,7 +23,7 @@ from .const import (
     SIGNAL_LIBRARY,
     SIGNAL_PLAYBACK,
 )
-from .entity import client_unique_id
+from .entity import client_device_info, client_unique_id, find_device
 from .sessions import PlaybackEvent
 
 if TYPE_CHECKING:
@@ -51,7 +51,6 @@ async def async_setup_entry(
         entities.append(JellyfinActivityEvent(entry, runtime))
 
     # Restore clients seen before, so their entities exist right after a restart
-    dev_reg = dr.async_get(hass)
     prefix = f"{server_id}_"
     for reg_entry in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id):
         if (
@@ -61,7 +60,7 @@ async def async_setup_entry(
         ):
             continue
         device_id = reg_entry.unique_id[len(prefix) :]
-        device = dev_reg.async_get_device(identifiers={(DOMAIN, reg_entry.unique_id)})
+        device = find_device(hass, entry, reg_entry.unique_id)
         clients[device_id] = JellyfinClientEvent(
             entry,
             runtime,
@@ -175,13 +174,7 @@ class JellyfinClientEvent(_JellyfinEventBase):
             self._queued.append(pending)
         unique_id = client_unique_id(runtime.server_id, device_id)
         self._attr_unique_id = unique_id
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, unique_id)},
-            name=device_name,
-            manufacturer="Jellyfin",
-            model=client,
-            via_device=(DOMAIN, runtime.server_id),
-        )
+        self._attr_device_info = client_device_info(runtime, unique_id, device_name, client)
 
 
 class _ServerEvent(_JellyfinEventBase):

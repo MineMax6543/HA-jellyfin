@@ -76,6 +76,8 @@ class JellyfinRuntime:
     sessions: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Scheduled tasks as pushed by the server (admin only)
     tasks: list[dict[str, Any]] = field(default_factory=list)
+    # Device registry id of the server device (parent of the client devices)
+    server_device_id: str | None = None
 
     def session_for(self, device_id: str) -> dict[str, Any] | None:
         return self.sessions.get(device_id)
@@ -117,7 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
     entry.runtime_data = runtime
     await coordinator.async_config_entry_first_refresh()
 
-    dr.async_get(hass).async_get_or_create(
+    server_device = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, runtime.server_id)},
         name=runtime.server_name,
@@ -126,6 +128,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
         sw_version=runtime.server_version,
         configuration_url=url,
     )
+    runtime.server_device_id = server_device.id
 
     @callback
     def _emit(event: PlaybackEvent) -> None:
