@@ -45,6 +45,15 @@ from then on.
   *add* / *play next* queue instead.
 - **Browse / search**: every library, with *Continue watching* and *Next up* at the top.
 
+Controls react instantly in Home Assistant: after a successful command the expected state
+is shown right away and corrected by the app's next report (or after 8 s if the app
+never confirms). Some apps restart the item when asked to resume; Jellyfin Plus notices
+this and seeks back to where you paused, logging a warning that names the player.
+
+**Troubleshooting**: *Settings → Devices & services → Jellyfin Plus → ⋮ → Enable debug
+logging* logs every command sent (`-> Pause`) and every state received
+(`<- item=… paused=… position=…`).
+
 ## Remote
 
 `remote.send_command` with Jellyfin command names (`MoveUp`, `Select`, `Back`, `GoHome`,

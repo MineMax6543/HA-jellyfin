@@ -424,6 +424,8 @@ class JellyfinListener:
                 except ValueError:
                     continue
                 kind = message.get("MessageType")
+                if kind != "KeepAlive":
+                    _LOGGER.debug("WebSocket <- %s", kind)
                 if kind == "Sessions" and isinstance(message.get("Data"), list):
                     self._on_sessions(message["Data"])
                 elif kind == "ForceKeepAlive":

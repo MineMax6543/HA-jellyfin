@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.media_player import (
@@ -35,6 +37,17 @@ from .entity import (
 
 if TYPE_CHECKING:
     from . import JellyfinConfigEntry
+
+_LOGGER = logging.getLogger(__name__)
+
+# Show the expected state right after a command until the app confirms it
+OPTIMISTIC_SECONDS = 8
+# A reported position this far off from our extrapolation counts as a real jump
+POSITION_TOLERANCE = 3
+# Resume protection: if an app restarts the item after "Unpause", seek back
+RESUME_GUARD_SECONDS = 20
+RESTART_THRESHOLD = 5
+MIN_RESTORE_POSITION = 15
 
 _BASE_FEATURES = (
     MediaPlayerEntityFeature.PLAY
@@ -102,8 +115,15 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
 
     def __init__(self, *args: Any) -> None:
         super().__init__(*args)
-        self._position: int | None = None
+        # Position (seconds) as of _position_updated_at; HA extrapolates while playing
+        self._position: float | None = None
         self._position_updated_at: datetime | None = None
+        self._last_item_id: str | None = None
+        self._last_paused: bool | None = None
+        self._paused_override: bool | None = None
+        self._override_until = 0.0
+        # (item id, position, deadline) while watching for a restart after resume
+        self._resume_guard: tuple[str, float, float] | None = None
 
     # ---- helpers ----------------------------------------------------------
     @property
@@ -127,20 +147,130 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         except JellyfinError as err:
             raise HomeAssistantError(f"Jellyfin command failed: {err}") from err
 
-    def _update_position(self) -> None:
-        ticks = self._play_state.get("PositionTicks") if self._item else None
-        position = int(ticks // TICKS_PER_SECOND) if isinstance(ticks, (int, float)) else None
-        if position != self._position:
-            self._position = position
-            self._position_updated_at = dt_util.utcnow()
+    async def _playstate(self, command: str, seek_ticks: int | None = None) -> None:
+        session_id = self._session_id()
+        _LOGGER.debug(
+            "%s: -> %s%s (session %s)",
+            self.entity_id,
+            command,
+            "" if seek_ticks is None else f" {seek_ticks / TICKS_PER_SECOND:.0f}s",
+            session_id,
+        )
+        await self._run(self._runtime.client.playstate(session_id, command, seek_ticks))
+
+    # ---- position / state bookkeeping --------------------------------------------
+    @property
+    def _paused(self) -> bool:
+        if self._paused_override is not None and time.monotonic() < self._override_until:
+            return self._paused_override
+        return bool(self._play_state.get("IsPaused"))
+
+    def _extrapolate(self, paused: bool | None) -> float | None:
+        """Where playback is now, given the last anchor and play/pause state."""
+        if self._position is None:
+            return None
+        if paused is False and self._position_updated_at is not None:
+            elapsed = (dt_util.utcnow() - self._position_updated_at).total_seconds()
+            return self._position + max(elapsed, 0)
+        return self._position
+
+    def _anchor(self, position: float | None) -> None:
+        self._position = position
+        self._position_updated_at = dt_util.utcnow() if position is not None else None
+
+    @callback
+    def _sync_from_session(self) -> None:
+        item = self._item
+        if not item:
+            self._anchor(None)
+            self._last_item_id = None
+            self._last_paused = None
+            self._paused_override = None
+            self._resume_guard = None
+            return
+        play_state = self._play_state
+        reported_paused = bool(play_state.get("IsPaused"))
+        if self._paused_override is not None and (
+            reported_paused == self._paused_override
+            or time.monotonic() >= self._override_until
+        ):
+            self._paused_override = None
+
+        ticks = play_state.get("PositionTicks")
+        reported = ticks / TICKS_PER_SECOND if isinstance(ticks, (int, float)) else None
+        item_changed = item.get("Id") != self._last_item_id
+        paused = self._paused
+        expected = self._extrapolate(self._last_paused)
+        if reported is not None and (
+            item_changed
+            or expected is None
+            or paused != self._last_paused
+            or abs(reported - expected) > POSITION_TOLERANCE
+        ):
+            self._anchor(reported)
+        elif paused != self._last_paused and expected is not None:
+            self._anchor(expected)
+
+        _LOGGER.debug(
+            "%s: <- item=%s paused=%s position=%s (reported %s, method %s)",
+            self.entity_id,
+            item.get("Name"),
+            paused,
+            None if self._position is None else round(self._position),
+            None if reported is None else round(reported),
+            play_state.get("PlayMethod"),
+        )
+        self._last_item_id = item.get("Id")
+        self._last_paused = paused
+        if reported is not None:
+            self._check_resume_guard(item.get("Id"), reported)
+
+    @callback
+    def _set_optimistic(self, paused: bool) -> None:
+        if not self._item:
+            return
+        current = self._extrapolate(self._last_paused)
+        self._paused_override = paused
+        self._override_until = time.monotonic() + OPTIMISTIC_SECONDS
+        if current is not None:
+            self._anchor(current)
+        self._last_paused = paused
+        self.async_write_ha_state()
+
+    def _check_resume_guard(self, item_id: str | None, reported: float) -> None:
+        guard = self._resume_guard
+        if guard is None:
+            return
+        guard_item, guard_position, deadline = guard
+        if time.monotonic() > deadline or item_id != guard_item:
+            self._resume_guard = None
+        elif reported <= RESTART_THRESHOLD:
+            self._resume_guard = None
+            _LOGGER.warning(
+                "%s restarted the item from the beginning after resume; seeking back to %ss",
+                self.entity_id,
+                round(guard_position),
+            )
+            self.hass.async_create_task(self._seek_back(guard_position))
+        elif reported >= guard_position + 2:
+            self._resume_guard = None  # resumed where it was: all good
+
+    async def _seek_back(self, position: float) -> None:
+        try:
+            await self._playstate("Seek", int(position * TICKS_PER_SECOND))
+        except HomeAssistantError as err:
+            _LOGGER.warning("%s: could not seek back after restart: %s", self.entity_id, err)
+            return
+        self._anchor(position)
+        self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        self._update_position()
+        self._sync_from_session()
 
     @callback
     def _on_sessions(self) -> None:
-        self._update_position()
+        self._sync_from_session()
         super()._on_sessions()
 
     # ---- state ------------------------------------------------------------
@@ -150,7 +280,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
             return MediaPlayerState.OFF
         if not self._item:
             return MediaPlayerState.IDLE
-        if self._play_state.get("IsPaused"):
+        if self._paused:
             return MediaPlayerState.PAUSED
         return MediaPlayerState.PLAYING
 
@@ -215,7 +345,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
 
     @property
     def media_position(self) -> int | None:
-        return self._position
+        return None if self._position is None else int(self._position)
 
     @property
     def media_position_updated_at(self) -> datetime | None:
@@ -258,29 +388,42 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
 
     # ---- controls -----------------------------------------------------------
     async def async_media_play(self) -> None:
-        await self._run(self._runtime.client.playstate(self._session_id(), "Unpause"))
+        position = self._extrapolate(self._last_paused)
+        await self._playstate("Unpause")
+        item = self._item
+        if item and position is not None and position >= MIN_RESTORE_POSITION:
+            self._resume_guard = (
+                item.get("Id"),
+                position,
+                time.monotonic() + RESUME_GUARD_SECONDS,
+            )
+        self._set_optimistic(paused=False)
 
     async def async_media_pause(self) -> None:
-        await self._run(self._runtime.client.playstate(self._session_id(), "Pause"))
+        await self._playstate("Pause")
+        self._set_optimistic(paused=True)
 
     async def async_media_play_pause(self) -> None:
-        await self._run(self._runtime.client.playstate(self._session_id(), "PlayPause"))
+        # Decided here instead of sending "PlayPause", so the shown state and
+        # the resume protection stay consistent
+        if self.state == MediaPlayerState.PLAYING:
+            await self.async_media_pause()
+        else:
+            await self.async_media_play()
 
     async def async_media_stop(self) -> None:
-        await self._run(self._runtime.client.playstate(self._session_id(), "Stop"))
+        await self._playstate("Stop")
 
     async def async_media_next_track(self) -> None:
-        await self._run(self._runtime.client.playstate(self._session_id(), "NextTrack"))
+        await self._playstate("NextTrack")
 
     async def async_media_previous_track(self) -> None:
-        await self._run(self._runtime.client.playstate(self._session_id(), "PreviousTrack"))
+        await self._playstate("PreviousTrack")
 
     async def async_media_seek(self, position: float) -> None:
-        await self._run(
-            self._runtime.client.playstate(
-                self._session_id(), "Seek", int(position * TICKS_PER_SECOND)
-            )
-        )
+        await self._playstate("Seek", int(position * TICKS_PER_SECOND))
+        self._anchor(position)
+        self.async_write_ha_state()
 
     async def async_set_volume_level(self, volume: float) -> None:
         await self._run(
@@ -330,7 +473,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         """Show a message on the client's screen, optionally pausing playback."""
         session_id = self._session_id()
         if pause and self.state == MediaPlayerState.PLAYING:
-            await self._run(self._runtime.client.playstate(session_id, "Pause"))
+            await self.async_media_pause()
         await self._run(
             self._runtime.client.send_message(
                 session_id, title or "Home Assistant", message, timeout * 1000 if timeout else None

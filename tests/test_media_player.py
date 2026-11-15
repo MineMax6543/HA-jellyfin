@@ -106,7 +106,7 @@ async def test_media_player_states_and_stable_entity(hass: HomeAssistant, fake_l
         await hass.services.async_call(
             "media_player", "media_seek", {"entity_id": player, "seek_position": 90}, blocking=True
         )
-    assert playstate.call_args_list[0].args == ("s2", "Pause")
+    assert playstate.call_args_list[0].args == ("s2", "Pause", None)
     assert playstate.call_args_list[1].args == ("s2", "Seek", 900_000_000)
 
     # server connection lost: unavailable; after reload the player exists right away

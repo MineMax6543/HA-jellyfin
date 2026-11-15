@@ -111,7 +111,7 @@ async def test_send_message(hass: HomeAssistant, fake_listener) -> None:
              "title": "Front door", "timeout": 8, "pause": True},
             blocking=True,
         )
-    assert playstate.call_args.args == ("s1", "Pause")
+    assert playstate.call_args.args == ("s1", "Pause", None)
     assert message.call_args.args == ("s1", "Front door", "Doorbell!", 8000)
 
 
