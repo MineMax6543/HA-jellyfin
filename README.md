@@ -16,17 +16,7 @@ Jellyfin Plus talks to your [Jellyfin](https://jellyfin.org) server. Every play,
 reaches Home Assistant **the moment it happens** (no polling), and every Jellyfin app gets
 **one media player that always stays the same**, even after the app restarts.
 
-```mermaid
-flowchart LR
-    A["📺 Jellyfin apps<br/>Apple TV, iPhone, browser, …"]
-    J["🗄️ Jellyfin server"]
-    HA["🏠 Home Assistant<br/>Jellyfin Plus"]
-    S["🔊 Any speaker or TV<br/>HomePod, Sonos, Chromecast"]
-    A <-- "play, pause, position" --> J
-    J -- "live updates (websocket)" --> HA
-    HA -- "commands (HTTP)" --> J
-    HA -- "Media panel streams" --> S
-```
+![How Jellyfin Plus works](docs/images/overview.svg)
 
 ## Setup
 
@@ -56,16 +46,9 @@ flowchart LR
 
 Under **Jellyfin Plus → Configure**, link each Home Assistant user to their Jellyfin account.
 Everyone then continues where *they* stopped and gets their own *Next up*, *Currently watching*
-and calendar. Whose progress is used, the first that applies:
+and calendar.
 
-```mermaid
-flowchart LR
-    P["1️⃣ Picked person<br/>People folder or jellyfin_user"]
-    H["2️⃣ Who pressed play<br/>the linked HA user"]
-    D["3️⃣ The device's user<br/>logged in on that app"]
-    I["4️⃣ Integration<br/>the library user"]
-    P --> H --> D --> I
-```
+![Whose progress is used](docs/images/whose-progress.svg)
 
 | Option | Does |
 |---|---|
@@ -74,18 +57,6 @@ flowchart LR
 | Library user (API key) | Whose libraries, *Next up* and counts are shown by default |
 
 ## Staying connected
-
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> Connecting
-    Connecting --> Connected: all sessions synced
-    Connected --> Connected: live updates, polled data every 5 min
-    Connected --> Waiting: connection lost
-    Waiting --> Connecting: retry after 5 s … 5 min
-    Connected --> Login: key or login rejected
-    Login --> Connecting: re-entered in Home Assistant
-```
 
 - Media players stay the same entity across app restarts, because they're tied to the device, not the session. A closed app is *off*, not *unavailable*.
 - If the server is down, entities show as *unavailable* and come back on their own.
