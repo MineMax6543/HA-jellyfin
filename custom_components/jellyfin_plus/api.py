@@ -241,6 +241,10 @@ class JellyfinClient:
         return (result or {}).get("Items", [])
 
     # ---- users (multi-user) ------------------------------------------------
+    async def me(self) -> dict[str, Any]:
+        """The account Jellyfin Plus is logged in with (incl. its Policy)."""
+        return await self._call("GET", "/Users/Me") or {}
+
     async def users(self) -> list[dict[str, Any]]:
         """All Jellyfin users (admin or API key)."""
         return await self._call("GET", "/Users") or []

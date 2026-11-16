@@ -101,6 +101,9 @@ def fake_listener() -> Generator[type[FakeListener]]:
         patch.object(JellyfinClient, "scheduled_tasks", AsyncMock(return_value=TASKS)),
         patch.object(JellyfinClient, "item_counts", AsyncMock(return_value=COUNTS)),
         patch.object(JellyfinClient, "users", AsyncMock(return_value=USERS)),
+        patch.object(
+            JellyfinClient, "me", AsyncMock(return_value={"Policy": {"IsAdministrator": True}})
+        ),
         patch.object(JellyfinClient, "media_segments", AsyncMock(return_value=[])),
         patch.object(
             JellyfinCoordinator,

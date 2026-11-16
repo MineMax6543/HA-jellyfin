@@ -41,7 +41,7 @@ from .const import (
     SIGNAL_SESSIONS,
     SIGNAL_TASKS,
 )
-from .coordinator import JellyfinCoordinator
+from .coordinator import JellyfinCoordinator, is_admin_account
 from .segments import SegmentWatcher
 from .services import async_register_services
 from .users import ha_user_for
@@ -133,6 +133,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
         raise ConfigEntryNotReady(f"Cannot reach Jellyfin at {url}: {err}") from err
 
     client = JellyfinClient(session, url, token, device_id, entry.data.get(CONF_USER_ID))
+    # Admin rights may have changed since setup (e.g. granted later in Jellyfin)
+    try:
+        current_admin = is_admin_account(await client.me())
+    except JellyfinError as err:
+        _LOGGER.debug("Could not check admin rights, keeping %s: %s", is_admin, err)
+        current_admin = is_admin
+    if current_admin != is_admin:
+        _LOGGER.info(
+            "Jellyfin account is %s an administrator; updating Jellyfin Plus",
+            "now" if current_admin else "no longer",
+        )
+        is_admin = current_admin
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_IS_ADMIN: is_admin}
+        )
     coordinator = JellyfinCoordinator(hass, entry, client, is_admin)
     runtime = JellyfinRuntime(
         server_id=info.get("Id") or entry.unique_id or entry.entry_id,
@@ -225,6 +240,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
         on_connected=_on_connected,
     )
     runtime.listener.start()
+
+    @callback
+    def _check_admin() -> None:
+        current = (coordinator.data or {}).get("is_admin")
+        if current is None or current == runtime.is_admin:
+            return
+        _LOGGER.info(
+            "Jellyfin account is %s an administrator; reloading Jellyfin Plus",
+            "now" if current else "no longer",
+        )
+        # Saving the new value reloads the entry via the update listener
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_IS_ADMIN: current}
+        )
+
+    entry.async_on_unload(coordinator.async_add_listener(_check_admin))
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 

@@ -226,7 +226,8 @@ async def test_updates_and_buttons(hass: HomeAssistant, fake_listener) -> None:
 
 
 async def test_non_admin_gets_no_admin_entities(hass: HomeAssistant, fake_listener) -> None:
-    await _setup(hass, admin=False)
+    with patch.object(JellyfinClient, "me", AsyncMock(return_value={"Policy": {}})):
+        await _setup(hass, admin=False)
     assert fake_listener.instances[0].subscriptions == []
     for domain, key in [
         ("button", "library_scan"),
@@ -253,3 +254,37 @@ async def test_count_sensors(hass: HomeAssistant, fake_listener) -> None:
     assert hass.states.get(_eid(hass, "sensor", "count_movies")).attributes["friendly_name"].endswith(
         "Movies"
     )
+
+
+async def test_detects_becoming_admin(hass: HomeAssistant, fake_listener) -> None:
+    """Set up as a normal user, later granted admin rights in Jellyfin."""
+    with patch.object(JellyfinClient, "me", AsyncMock(return_value={"Policy": {}})):
+        entry = await _setup(hass, admin=False)
+    assert _eid(hass, "button", "library_scan") is None
+
+    # promoted in Jellyfin: picked up at the next refresh, the entry reloads
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert entry.data["is_admin"] is True
+    assert entry.runtime_data.is_admin is True
+    assert _eid(hass, "button", "library_scan") is not None
+    assert len(entry.runtime_data.users) == 2  # user list now readable
+
+
+async def test_admin_already_at_setup(hass: HomeAssistant, fake_listener) -> None:
+    """Stored as non-admin, but already an admin when Home Assistant starts."""
+    entry = await _setup(hass, admin=False)
+    assert entry.data["is_admin"] is True
+    assert _eid(hass, "button", "library_scan") is not None
+
+
+async def test_losing_admin_reloads_without_admin_features(
+    hass: HomeAssistant, fake_listener
+) -> None:
+    entry = await _setup(hass)
+    with patch.object(JellyfinClient, "me", AsyncMock(return_value={"Policy": {}})):
+        await entry.runtime_data.coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert entry.data["is_admin"] is False
+        assert entry.runtime_data.is_admin is False
+        assert fake_listener.instances[-1].subscriptions == []

@@ -18,6 +18,10 @@ from .const import CONF_USER_MAP, GITHUB_LATEST_RELEASE, POLL_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def is_admin_account(me: dict[str, Any]) -> bool:
+    return bool((me.get("Policy") or {}).get("IsAdministrator"))
+
 GITHUB_EVERY_SECONDS = 6 * 3600
 
 
@@ -54,6 +58,11 @@ class JellyfinCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["system"] = await self.client.system_info()
         except JellyfinError as err:
             raise UpdateFailed(f"Jellyfin unreachable: {err}") from err
+        # Admin rights can change at any time; the entry reloads when they do
+        try:
+            data["is_admin"] = is_admin_account(await self.client.me())
+        except JellyfinError:
+            data["is_admin"] = self.is_admin
 
         parts: dict[str, Any] = {
             "upcoming": self.client.upcoming,

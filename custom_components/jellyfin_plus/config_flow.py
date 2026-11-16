@@ -211,7 +211,10 @@ class JellyfinPlusOptionsFlow(OptionsFlow):
             description_placeholders={
                 "note": ""
                 if runtime.is_admin
-                else "\n\n**Note:** Jellyfin Plus is not logged in as an administrator, "
-                "so only its own Jellyfin user can be linked."
+                else "\n\n**Note:** the Jellyfin account of this integration is not an "
+                "administrator, so only that account can be linked. Enable *Allow this "
+                "user to manage the server* for it in Jellyfin (Dashboard -> Users); "
+                "*Allow remote control of other users* alone is not enough. Jellyfin "
+                "Plus notices the change within 5 minutes."
             },
         )
