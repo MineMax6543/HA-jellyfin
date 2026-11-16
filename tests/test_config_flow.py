@@ -28,9 +28,13 @@ def no_setup():
         yield
 
 
-async def _start(hass):
-    return await hass.config_entries.flow.async_init(
+async def _start(hass, method: str = "password"):
+    result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.MENU
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": method}
     )
 
 
@@ -93,3 +97,63 @@ async def test_reauth(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
     assert entry.data["token"] == "new"
+
+
+PATCH_INFO = "custom_components.jellyfin_plus.config_flow.async_get_system_info"
+PATCH_USERS = "custom_components.jellyfin_plus.config_flow.async_get_users"
+USERS = [{"Id": "u1", "Name": "max"}, {"Id": "u2", "Name": "kai"}]
+
+
+async def test_api_key_flow(hass: HomeAssistant) -> None:
+    result = await _start(hass, "api_key")
+    assert result["step_id"] == "api_key"
+    with (
+        patch(PATCH_INFO, AsyncMock(return_value={"Id": "srv1", "ServerName": "Media Server"})),
+        patch(PATCH_USERS, AsyncMock(return_value=USERS)) as users,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"url": "jelly.local:8096/", "api_key": " key123 "}
+        )
+    assert result["step_id"] == "api_user"
+    assert users.call_args.args[2] == "key123"  # stripped key used as token
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"user_id": "u2"})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Jellyfin (Media Server)"
+    data = result["data"]
+    assert data["auth_type"] == "api_key"
+    assert data["token"] == "key123"
+    assert data["user_id"] == "u2"
+    assert data["username"] == "kai"
+    assert data["is_admin"] is True
+    assert data["url"] == "http://jelly.local:8096"
+    assert result["result"].unique_id == "srv1"
+
+
+async def test_api_key_rejected(hass: HomeAssistant) -> None:
+    result = await _start(hass, "api_key")
+    with patch(PATCH_INFO, AsyncMock(side_effect=InvalidAuth("401"))):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"url": "http://j:8096", "api_key": "bad"}
+        )
+    assert result["errors"] == {"base": "invalid_api_key"}
+
+
+async def test_reauth_api_key(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="srv1",
+        data={"url": "http://j:8096", "username": "kai", "device_id": "d",
+              "token": "old", "auth_type": "api_key"},
+    )
+    entry.add_to_hass(hass)
+    result = await entry.start_reauth_flow(hass)
+    assert result["step_id"] == "reauth_api_key"
+    with (
+        patch(PATCH_INFO, AsyncMock(return_value={"Id": "srv1"})),
+        patch(PATCH_USERS, AsyncMock(return_value=USERS)),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"api_key": "new-key"}
+        )
+    assert result["reason"] == "reauth_successful"
+    assert entry.data["token"] == "new-key"

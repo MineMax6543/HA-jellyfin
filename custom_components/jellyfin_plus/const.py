@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "jellyfin_plus"
-VERSION = "0.5.0"
+VERSION = "0.6.0b1"
 CLIENT_NAME = "Jellyfin Plus"
 DEVICE_NAME = "Home Assistant"
 
@@ -12,6 +12,10 @@ CONF_TOKEN = "token"
 CONF_USER_ID = "user_id"
 CONF_SERVER_ID = "server_id"
 CONF_IS_ADMIN = "is_admin"
+CONF_AUTH_TYPE = "auth_type"
+CONF_API_KEY = "api_key"
+AUTH_PASSWORD = "password"
+AUTH_API_KEY = "api_key"
 
 # ---- bus events (for YAML automations) ---------------------------------------
 EVENT_PLAYBACK = f"{DOMAIN}_playback"

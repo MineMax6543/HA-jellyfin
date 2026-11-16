@@ -116,6 +116,14 @@ async def async_get_system_info(
     return result
 
 
+async def async_get_users(
+    session: aiohttp.ClientSession, url: str, token: str, device_id: str
+) -> list[dict[str, Any]]:
+    """All users (needs an API key or an administrator)."""
+    result = await _request(session, "GET", f"{url}/Users", auth_header(device_id, token))
+    return result if isinstance(result, list) else []
+
+
 async def async_get_sessions(
     session: aiohttp.ClientSession, url: str, token: str, device_id: str
 ) -> list[dict[str, Any]]:

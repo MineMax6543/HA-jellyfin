@@ -180,3 +180,28 @@ async def test_watching_sensor_and_event_ha_user(
     assert state.state == "Dune"
     assert state.attributes["streams"][0]["device"] == "Living Room Apple TV"
     assert events[0].data["ha_user_id"] == kai.id
+
+
+
+async def test_api_key_entry_is_admin_and_can_change_library_user(
+    hass: HomeAssistant, fake_listener
+) -> None:
+    from custom_components.jellyfin_plus.api import JellyfinClient as Client
+
+    data = {**DATA, "auth_type": "api_key", "is_admin": False}
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="srv1", data=data)
+    entry.add_to_hass(hass)
+    with patch.object(Client, "me", AsyncMock(side_effect=AssertionError("no /Users/Me"))):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        assert entry.runtime_data.is_admin is True  # API keys may do everything
+        assert entry.data["is_admin"] is True
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert "library_user" in [str(k) for k in result["data_schema"].schema]
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"library_user": "u2"}
+        )
+        await hass.async_block_till_done()
+    assert entry.data["user_id"] == "u2"
+    assert entry.data["username"] == "kai"

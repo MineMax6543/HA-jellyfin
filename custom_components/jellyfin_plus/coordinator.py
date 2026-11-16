@@ -14,7 +14,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import JellyfinClient, JellyfinError
-from .const import CONF_USER_MAP, GITHUB_LATEST_RELEASE, POLL_MINUTES
+from .const import (
+    AUTH_API_KEY,
+    CONF_AUTH_TYPE,
+    CONF_USER_MAP,
+    GITHUB_LATEST_RELEASE,
+    POLL_MINUTES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,10 +65,13 @@ class JellyfinCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except JellyfinError as err:
             raise UpdateFailed(f"Jellyfin unreachable: {err}") from err
         # Admin rights can change at any time; the entry reloads when they do
-        try:
-            data["is_admin"] = is_admin_account(await self.client.me())
-        except JellyfinError:
-            data["is_admin"] = self.is_admin
+        if self.config_entry.data.get(CONF_AUTH_TYPE) == AUTH_API_KEY:
+            data["is_admin"] = True
+        else:
+            try:
+                data["is_admin"] = is_admin_account(await self.client.me())
+            except JellyfinError:
+                data["is_admin"] = self.is_admin
 
         parts: dict[str, Any] = {
             "upcoming": self.client.upcoming,

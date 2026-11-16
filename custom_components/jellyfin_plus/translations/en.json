@@ -1,7 +1,22 @@
 {
   "config": {
     "step": {
+      "reauth_confirm": {
+        "title": "Log in again",
+        "description": "Jellyfin no longer accepts the saved login for **{username}** on {url}. Enter the password again.",
+        "data": {
+          "password": "Password"
+        }
+      },
       "user": {
+        "title": "Connect to Jellyfin",
+        "description": "How should Jellyfin Plus log in?",
+        "menu_options": {
+          "password": "Username & password",
+          "api_key": "API key (recommended for several users)"
+        }
+      },
+      "password": {
         "title": "Connect to Jellyfin",
         "description": "Use an **administrator** account to get events for every user. A normal account only sees its own playback.",
         "data": {
@@ -10,18 +25,35 @@
           "password": "Password"
         }
       },
-      "reauth_confirm": {
-        "title": "Log in again",
-        "description": "Jellyfin no longer accepts the saved login for **{username}** on {url}. Enter the password again.",
+      "api_key": {
+        "title": "Connect with an API key",
+        "description": "Create a key in Jellyfin under **Dashboard → API Keys**. An API key may read every user's data and control every session, so no special user permissions are needed.",
         "data": {
-          "password": "Password"
+          "url": "Server URL (e.g. http://192.168.1.10:8096)",
+          "api_key": "API key"
+        }
+      },
+      "api_user": {
+        "title": "Library user",
+        "description": "Which Jellyfin user's libraries, Next up and counts should Jellyfin Plus show by default? Other users can be linked to Home Assistant users later under Configure.",
+        "data": {
+          "user_id": "Jellyfin user"
+        }
+      },
+      "reauth_api_key": {
+        "title": "New API key",
+        "description": "Jellyfin no longer accepts the API key for {url}. Enter a new one (Dashboard → API Keys).",
+        "data": {
+          "api_key": "API key"
         }
       }
     },
     "error": {
       "cannot_connect": "Can't reach the Jellyfin server. Check the URL and that it's running.",
       "invalid_auth": "Wrong username or password.",
-      "unknown": "Unexpected error, see the logs."
+      "unknown": "Unexpected error, see the logs.",
+      "invalid_api_key": "Jellyfin rejected this API key.",
+      "no_users": "The server returned no users for this API key."
     },
     "abort": {
       "already_configured": "This Jellyfin server is already set up.",
@@ -277,7 +309,8 @@
         "description": "Link each Home Assistant user to their Jellyfin account. Their progress, watched state and Next up are then used when they start something or run an action, and each linked person gets their own Next up, Currently watching and calendar entities.{note}",
         "data": {
           "people_folder": "\"People\" folder in the media browser",
-          "add_session_user": "Also save progress for the person who started playback on a shared device"
+          "add_session_user": "Also save progress for the person who started playback on a shared device",
+          "library_user": "Library user of the integration (API key login)"
         }
       }
     },

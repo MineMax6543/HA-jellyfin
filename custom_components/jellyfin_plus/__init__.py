@@ -26,6 +26,8 @@ from .api import (
 from .const import (
     ACTION_ITEM_ADDED,
     ANNOUNCED_ITEM_TYPES,
+    AUTH_API_KEY,
+    CONF_AUTH_TYPE,
     CONF_DEVICE_ID,
     CONF_IS_ADMIN,
     CONF_TOKEN,
@@ -133,12 +135,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
         raise ConfigEntryNotReady(f"Cannot reach Jellyfin at {url}: {err}") from err
 
     client = JellyfinClient(session, url, token, device_id, entry.data.get(CONF_USER_ID))
-    # Admin rights may have changed since setup (e.g. granted later in Jellyfin)
-    try:
-        current_admin = is_admin_account(await client.me())
-    except JellyfinError as err:
-        _LOGGER.debug("Could not check admin rights, keeping %s: %s", is_admin, err)
-        current_admin = is_admin
+    # Admin rights may have changed since setup (e.g. granted later in Jellyfin).
+    # An API key has no user of its own and may always do everything.
+    if entry.data.get(CONF_AUTH_TYPE) == AUTH_API_KEY:
+        current_admin = True
+    else:
+        try:
+            current_admin = is_admin_account(await client.me())
+        except JellyfinError as err:
+            _LOGGER.debug("Could not check admin rights, keeping %s: %s", is_admin, err)
+            current_admin = is_admin
     if current_admin != is_admin:
         _LOGGER.info(
             "Jellyfin account is %s an administrator; updating Jellyfin Plus",
