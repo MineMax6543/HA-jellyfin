@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "jellyfin_plus"
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 CLIENT_NAME = "Jellyfin Plus"
 DEVICE_NAME = "Home Assistant"
 

@@ -4,7 +4,6 @@ Everything in detail. For a quick start see the [README](../README.md).
 
 - [Login](#login)
 - [Media player](#media-player)
-- [Media panel](#media-panel)
 - [Remote](#remote)
 - [Events](#events)
 - [Sensors and calendar](#sensors-and-calendar)
@@ -52,14 +51,6 @@ it connects and kept from then on (tied to the device, not the session).
 - **Audio track / Subtitles:** two selects per app (if it supports switching tracks), available
   while something is playing. Picking an option switches the track on the TV.
 - **Message on the screen:** `jellyfin_plus.send_message` (see [Actions](#actions)).
-
-## Media panel
-
-Jellyfin appears under **Media** in the sidebar. Songs and videos picked there play on *any*
-media player (HomePod via AirPlay, Sonos, Chromecast, …), not just Jellyfin apps: songs as
-MP3, videos as HLS (H.264/AAC), transcoded by Jellyfin if needed. The player must be able to
-reach your Jellyfin URL. Albums and seasons can be browsed, but songs and episodes are played
-one at a time.
 
 ## Remote
 

@@ -33,7 +33,6 @@ reaches Home Assistant **the moment it happens** (no polling), and every Jellyfi
 | 🎬 **Media player** | One per app: what's playing, poster, play/pause/seek, volume, browse and search your libraries, resume where you left off |
 | 🎧 **Tracks** | Audio track and subtitle selects per app |
 | 🎮 **Remote** | Up, down, select, back, home; turning it off stops playback |
-| 🔊 **Media panel** | Jellyfin under *Media* in the sidebar, playable on **any** speaker or TV |
 | ⚡ **Events** | Playback started / paused / resumed / stopped, intro and credits*, new in the library, activity log |
 | 📊 **Sensors** | Next up, recently added, active streams, bandwidth, movie/series/episode counts, free space |
 | 📅 **Calendar** | Upcoming episodes of your shows |
@@ -142,16 +141,6 @@ data:
 
 The sleep timer shows up in the attributes `sleep_timer` and `sleep_timer_ends`. *End of
 item* acts just before the next episode would start.
-</details>
-
-<details>
-<summary><b>🔊 Media panel: playing on any speaker</b></summary>
-
-Songs and videos picked under **Media → Jellyfin** play on any media player in Home Assistant.
-Jellyfin Plus hands it a stream (songs as MP3, videos as HLS with H.264/AAC); the speaker's own
-integration (Apple TV for HomePods, Sonos, Google Cast) does the rest. The speaker must be able
-to reach your Jellyfin URL. Albums and seasons can be browsed, but play one song or episode at
-a time.
 </details>
 
 <details>
