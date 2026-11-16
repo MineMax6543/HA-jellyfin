@@ -218,6 +218,14 @@
       "create_backup": {
         "name": "Create backup"
       }
+    },
+    "select": {
+      "audio_track": {
+        "name": "Audio track"
+      },
+      "subtitle_track": {
+        "name": "Subtitles"
+      }
     }
   },
   "services": {

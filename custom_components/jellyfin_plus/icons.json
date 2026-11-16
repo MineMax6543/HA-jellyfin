@@ -43,6 +43,14 @@
       "running_tasks": {
         "default": "mdi:progress-clock"
       }
+    },
+    "select": {
+      "audio_track": {
+        "default": "mdi:speaker-message"
+      },
+      "subtitle_track": {
+        "default": "mdi:subtitles"
+      }
     }
   },
   "services": {
