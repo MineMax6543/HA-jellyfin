@@ -44,5 +44,13 @@
         "default": "mdi:progress-clock"
       }
     }
+  },
+  "services": {
+    "sleep_timer": {
+      "service": "mdi:sleep"
+    },
+    "cancel_sleep_timer": {
+      "service": "mdi:sleep-off"
+    }
   }
 }

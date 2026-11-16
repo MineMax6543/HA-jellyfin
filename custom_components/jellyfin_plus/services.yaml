@@ -76,3 +76,34 @@ set_favorite:
       default: true
       selector:
         boolean:
+
+sleep_timer:
+  target:
+    entity:
+      integration: jellyfin_plus
+      domain: media_player
+  fields:
+    minutes:
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 720
+          unit_of_measurement: min
+    end_of_item:
+      example: true
+      selector:
+        boolean:
+    action:
+      default: pause
+      selector:
+        select:
+          options:
+            - pause
+            - stop
+
+cancel_sleep_timer:
+  target:
+    entity:
+      integration: jellyfin_plus
+      domain: media_player

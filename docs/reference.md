@@ -139,6 +139,7 @@ Administrator login or API key only.
 | Action | Fields |
 |---|---|
 | `jellyfin_plus.send_message` | target media player; `message`, `title`, `timeout` (s, 0 = until dismissed), `pause` |
+| `jellyfin_plus.sleep_timer` | target media player; `minutes` **or** `end_of_item: true`; `action` `pause` (default) / `stop`. Shown in the attributes `sleep_timer`, `sleep_timer_ends`. `cancel_sleep_timer` cancels it. |
 | `jellyfin_plus.mark_played` / `mark_unplayed` | `item_id`; optional `jellyfin_user`, `config_entry_id` |
 | `jellyfin_plus.set_favorite` | `item_id`, `favorite` (default on); optional `jellyfin_user`, `config_entry_id` |
 

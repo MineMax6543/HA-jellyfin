@@ -36,6 +36,7 @@ from .entity import (
     supports_media_control,
 )
 
+from .sleep_timer import MODE_END_OF_ITEM, SleepTimer
 from .users import resolve_user, user_map
 
 if TYPE_CHECKING:
@@ -72,6 +73,8 @@ _CONTENT_TYPE = {
     "TvChannel": MediaType.CHANNEL,
 }
 SERVICE_SEND_MESSAGE = "send_message"
+SERVICE_SLEEP_TIMER = "sleep_timer"
+SERVICE_CANCEL_SLEEP_TIMER = "cancel_sleep_timer"
 _ENQUEUE = {
     MediaPlayerEnqueue.ADD: "PlayLast",
     MediaPlayerEnqueue.NEXT: "PlayNext",
@@ -97,6 +100,21 @@ async def async_setup_entry(
             vol.Optional("pause", default=False): cv.boolean,
         },
         "async_send_message",
+    )
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SLEEP_TIMER,
+        {
+            vol.Exclusive("minutes", "when"): vol.All(
+                vol.Coerce(float), vol.Range(min=0.1, max=720)
+            ),
+            vol.Exclusive("end_of_item", "when"): cv.boolean,
+            vol.Optional("action", default="pause"): vol.In(["pause", "stop"]),
+        },
+        "async_set_sleep_timer",
+    )
+    platform.async_register_entity_service(
+        SERVICE_CANCEL_SLEEP_TIMER, None, "async_cancel_sleep_timer"
     )
     async_setup_device_entities(
         hass,
@@ -128,6 +146,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         self._override_until = 0.0
         # (item id, position, deadline) while watching for a restart after resume
         self._resume_guard: tuple[str, float, float] | None = None
+        self._sleep: SleepTimer | None = None
 
     # ---- helpers ----------------------------------------------------------
     @property
@@ -353,7 +372,71 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
     @callback
     def _on_sessions(self) -> None:
         self._sync_from_session()
+        self._update_sleep_timer()
         super()._on_sessions()
+
+    # ---- sleep timer ------------------------------------------------------------
+    def _remaining(self) -> float | None:
+        position = self._extrapolate(self._paused)
+        runtime = (self._item or {}).get("RunTimeTicks")
+        if position is None or not runtime:
+            return None
+        return max(runtime / TICKS_PER_SECOND - position, 0)
+
+    @callback
+    def _update_sleep_timer(self) -> None:
+        if self._sleep and self._sleep.mode == MODE_END_OF_ITEM:
+            self._sleep.update(
+                (self._item or {}).get("Id"),
+                self._remaining(),
+                self.state == MediaPlayerState.PLAYING,
+            )
+
+    async def async_set_sleep_timer(
+        self,
+        minutes: float | None = None,
+        end_of_item: bool = False,
+        action: str = "pause",
+    ) -> None:
+        """Pause/stop after some minutes, or when the current item ends."""
+        if self._sleep is None:
+            self._sleep = SleepTimer(self.hass, self._sleep_fire, self.async_write_ha_state)
+        if end_of_item:
+            item = self._item
+            if not item:
+                raise HomeAssistantError(f"Nothing is playing on {self.name or self.device_id}")
+            self._sleep.start_end_of_item(
+                item.get("Id"),
+                self._remaining(),
+                self.state == MediaPlayerState.PLAYING,
+                action,
+            )
+        elif minutes:
+            self._sleep.start_minutes(minutes, action)
+        else:
+            raise HomeAssistantError("Set either minutes or end_of_item")
+        self._runtime.trace.add("sleep_timer", entity=self.entity_id, **self._sleep.attributes())
+
+    async def async_cancel_sleep_timer(self) -> None:
+        if self._sleep:
+            self._sleep.cancel()
+
+    async def _sleep_fire(self, action: str) -> None:
+        if self.state not in (MediaPlayerState.PLAYING, MediaPlayerState.PAUSED):
+            return
+        if action == "stop":
+            await self.async_media_stop()
+        elif self.state == MediaPlayerState.PLAYING:
+            await self.async_media_pause()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._sleep:
+            self._sleep.cancel(notify=False)
+        await super().async_will_remove_from_hass()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        return self._sleep.attributes() if self._sleep and self._sleep.active else None
 
     # ---- state ------------------------------------------------------------
     @property
