@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 import homeassistant.util.dt as dt_util
 
 from .const import DOMAIN
+from .person import linked_people, person_data, person_device_info, person_unique_id
 
 if TYPE_CHECKING:
     from . import JellyfinConfigEntry, JellyfinRuntime
@@ -23,7 +24,13 @@ async def async_setup_entry(
     entry: JellyfinConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities([JellyfinUpcomingCalendar(entry.runtime_data)])
+    runtime = entry.runtime_data
+    entities: list[CalendarEntity] = [JellyfinUpcomingCalendar(runtime)]
+    entities.extend(
+        JellyfinPersonUpcomingCalendar(runtime, user_id, name)
+        for user_id, name in linked_people(entry).items()
+    )
+    async_add_entities(entities)
 
 
 def episode_event(item: dict[str, Any]) -> CalendarEvent | None:
@@ -61,8 +68,11 @@ class JellyfinUpcomingCalendar(CoordinatorEntity, CalendarEntity):
         self._attr_unique_id = f"{runtime.server_id}_upcoming"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, runtime.server_id)})
 
+    def _items(self) -> list[dict[str, Any]]:
+        return (self.coordinator.data or {}).get("upcoming") or []
+
     def _events(self) -> list[CalendarEvent]:
-        items = (self.coordinator.data or {}).get("upcoming") or []
+        items = self._items()
         events = [e for e in (episode_event(i) for i in items) if e is not None]
         return sorted(events, key=lambda e: e.start)
 
@@ -77,3 +87,17 @@ class JellyfinUpcomingCalendar(CoordinatorEntity, CalendarEntity):
         start: date = dt_util.as_local(start_date).date()
         end: date = dt_util.as_local(end_date).date()
         return [e for e in self._events() if e.end > start and e.start <= end]
+
+
+class JellyfinPersonUpcomingCalendar(JellyfinUpcomingCalendar):
+    """Upcoming episodes for one linked person."""
+
+    def __init__(self, runtime: JellyfinRuntime, user_id: str, name: str) -> None:
+        super().__init__(runtime)
+        self._runtime = runtime
+        self._user_id = user_id
+        self._attr_unique_id = person_unique_id(runtime, user_id, "upcoming")
+        self._attr_device_info = person_device_info(runtime, user_id, name)
+
+    def _items(self) -> list[dict[str, Any]]:
+        return person_data(self._runtime, self._user_id).get("upcoming") or []

@@ -194,41 +194,76 @@ class JellyfinClient:
         )
 
     # ---- library ---------------------------------------------------------
-    async def user_views(self) -> list[dict[str, Any]]:
-        result = await self._call("GET", "/UserViews", {"userId": self.user_id})
+    def _uid(self, user_id: str | None) -> str | None:
+        """The Jellyfin user a call is made for (default: the login user)."""
+        return user_id or self.user_id
+
+    async def user_views(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        result = await self._call("GET", "/UserViews", {"userId": self._uid(user_id)})
         return (result or {}).get("Items", [])
 
-    async def items(self, **params: Any) -> list[dict[str, Any]]:
-        result = await self._call("GET", "/Items", {"userId": self.user_id, **params})
+    async def items(self, user_id: str | None = None, **params: Any) -> list[dict[str, Any]]:
+        result = await self._call("GET", "/Items", {"userId": self._uid(user_id), **params})
         return (result or {}).get("Items", [])
 
-    async def item(self, item_id: str) -> dict[str, Any] | None:
-        items = await self.items(ids=item_id)
+    async def item(self, item_id: str, user_id: str | None = None) -> dict[str, Any] | None:
+        items = await self.items(user_id=user_id, ids=item_id)
         return items[0] if items else None
 
-    async def resume_items(self, limit: int = 30) -> list[dict[str, Any]]:
+    async def resume_items(
+        self, limit: int = 30, user_id: str | None = None
+    ) -> list[dict[str, Any]]:
         result = await self._call(
-            "GET", "/UserItems/Resume", {"userId": self.user_id, "limit": limit}
+            "GET", "/UserItems/Resume", {"userId": self._uid(user_id), "limit": limit}
         )
         return (result or {}).get("Items", [])
 
-    async def next_up(self, limit: int = 30) -> list[dict[str, Any]]:
+    async def next_up(
+        self, limit: int = 30, user_id: str | None = None
+    ) -> list[dict[str, Any]]:
         result = await self._call(
-            "GET", "/Shows/NextUp", {"userId": self.user_id, "limit": limit}
+            "GET", "/Shows/NextUp", {"userId": self._uid(user_id), "limit": limit}
         )
         return (result or {}).get("Items", [])
 
-    async def item_counts(self) -> dict[str, Any]:
+    async def item_counts(self, user_id: str | None = None) -> dict[str, Any]:
         """Number of movies, series, episodes, songs, ... visible to this user."""
-        return await self._call("GET", "/Items/Counts", {"userId": self.user_id}) or {}
+        return await self._call("GET", "/Items/Counts", {"userId": self._uid(user_id)}) or {}
 
-    async def upcoming(self, limit: int = 100) -> list[dict[str, Any]]:
+    async def upcoming(
+        self, limit: int = 100, user_id: str | None = None
+    ) -> list[dict[str, Any]]:
         result = await self._call(
             "GET",
             "/Shows/Upcoming",
-            {"userId": self.user_id, "limit": limit, "fields": "PremiereDate"},
+            {"userId": self._uid(user_id), "limit": limit, "fields": "PremiereDate"},
         )
         return (result or {}).get("Items", [])
+
+    # ---- users (multi-user) ------------------------------------------------
+    async def users(self) -> list[dict[str, Any]]:
+        """All Jellyfin users (admin or API key)."""
+        return await self._call("GET", "/Users") or []
+
+    async def set_played(self, item_id: str, played: bool, user_id: str | None = None) -> None:
+        await self._call(
+            "POST" if played else "DELETE",
+            f"/UserPlayedItems/{item_id}",
+            {"userId": self._uid(user_id)},
+        )
+
+    async def set_favorite(
+        self, item_id: str, favorite: bool, user_id: str | None = None
+    ) -> None:
+        await self._call(
+            "POST" if favorite else "DELETE",
+            f"/UserFavoriteItems/{item_id}",
+            {"userId": self._uid(user_id)},
+        )
+
+    async def add_session_user(self, session_id: str, user_id: str) -> None:
+        """Track playback progress for an extra user on a session."""
+        await self._call("POST", f"/Sessions/{session_id}/User/{user_id}")
 
     async def media_segments(self, item_id: str) -> list[dict[str, Any]]:
         """Intro/credits/... segments; empty if no segment provider is installed."""

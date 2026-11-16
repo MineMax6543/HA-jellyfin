@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "jellyfin_plus"
-VERSION = "0.4.0"
+VERSION = "0.5.0b1"
 CLIENT_NAME = "Jellyfin Plus"
 DEVICE_NAME = "Home Assistant"
 
@@ -84,3 +84,9 @@ SIGNAL_SESSIONS = f"{DOMAIN}_sessions_{{}}"
 SIGNAL_LIBRARY = f"{DOMAIN}_library_{{}}"
 SIGNAL_ACTIVITY = f"{DOMAIN}_activity_{{}}"
 SIGNAL_TASKS = f"{DOMAIN}_tasks_{{}}"
+
+# ---- multi-user (options) -------------------------------------------------------
+CONF_USER_MAP = "user_map"  # {HA user id: Jellyfin user id}
+CONF_PEOPLE_FOLDER = "people_folder"  # "People" folder in the media browser
+CONF_ADD_SESSION_USER = "add_session_user"  # add the person to shared sessions
+ATTR_JELLYFIN_USER = "jellyfin_user"

@@ -170,6 +170,28 @@ works.
 The server update entity asks GitHub for the latest Jellyfin release every 6 hours
 (`api.github.com`, no data about you or your server is sent).
 
+## Multiple users (experimental)
+
+Link Home Assistant users to their Jellyfin accounts under *Jellyfin Plus → Configure*.
+Jellyfin always saves progress for the user logged in on the playing device; the links
+decide whose data Jellyfin Plus *reads and acts for*:
+
+1. a person picked in the *People* folder or given as `jellyfin_user`,
+2. else the linked Home Assistant user who started it,
+3. else the Jellyfin user logged in on the device (also the default for browsing),
+4. else the integration's own account.
+
+- **Play** resumes at that person's position. Optional: also add the person to a shared
+  device's session, so Jellyfin saves the progress for them too.
+- **Per person**: *Next up* and *Currently watching* sensors and an *Upcoming episodes*
+  calendar, on a "Jellyfin &lt;name&gt;" device.
+- **Actions** `jellyfin_plus.mark_played`, `mark_unplayed`, `set_favorite`.
+- Playback events carry `ha_user_id`.
+- Optional *People* folder in the media browser with each person's *Continue watching*
+  and *Next up*.
+
+Needs an administrator account (to read other users' data).
+
 ## Setup
 
 1. Copy `custom_components/jellyfin_plus` to `config/custom_components/` and restart.

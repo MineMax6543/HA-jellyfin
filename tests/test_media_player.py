@@ -172,25 +172,25 @@ async def test_remote(hass: HomeAssistant, fake_listener) -> None:
 
 
 class FakeClient:
-    async def user_views(self):
+    async def user_views(self, user_id=None):
         return [{"Id": "lib-movies", "Name": "Movies", "Type": "CollectionFolder",
                  "IsFolder": True, "CollectionType": "movies"},
                 {"Id": "lib-books", "Name": "Books", "Type": "CollectionFolder",
                  "IsFolder": True, "CollectionType": "books"}]
 
-    async def item(self, item_id):
+    async def item(self, item_id, user_id=None):
         return {"Id": item_id, "Name": "Severance", "Type": "Series", "IsFolder": True}
 
-    async def items(self, **params):
+    async def items(self, user_id=None, **params):
         if "searchTerm" in params:
             return [{**MOVIE, "MediaType": "Video"}]
         return [{"Id": "season1", "Name": "Season 1", "Type": "Season", "IsFolder": True,
                  "ImageTags": {"Primary": "t1"}}]
 
-    async def resume_items(self):
+    async def resume_items(self, user_id=None):
         return [{**EPISODE, "MediaType": "Video", "SeriesId": "ser", "SeriesPrimaryImageTag": "st"}]
 
-    async def next_up(self):
+    async def next_up(self, user_id=None):
         return []
 
 

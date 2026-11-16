@@ -9,12 +9,28 @@ import uuid
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .api import CannotConnect, InvalidAuth, async_authenticate, normalize_url
 from .const import (
+    CONF_ADD_SESSION_USER,
+    CONF_PEOPLE_FOLDER,
+    CONF_USER_MAP,
     CONF_DEVICE_ID,
     CONF_IS_ADMIN,
     CONF_SERVER_ID,
@@ -34,10 +50,18 @@ USER_SCHEMA = vol.Schema(
 )
 
 
+NOT_LINKED = "__none__"
+
+
 class JellyfinPlusConfigFlow(ConfigFlow, domain=DOMAIN):
     """Log in to a Jellyfin server."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        return JellyfinPlusOptionsFlow()
 
     async def _login(
         self, url: str, username: str, password: str, device_id: str
@@ -118,5 +142,76 @@ class JellyfinPlusConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "username": entry.data[CONF_USERNAME],
                 "url": entry.data[CONF_URL],
+            },
+        )
+
+
+class JellyfinPlusOptionsFlow(OptionsFlow):
+    """Link Home Assistant users to Jellyfin users (experimental)."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self.config_entry
+        runtime = getattr(entry, "runtime_data", None)
+        if runtime is None:
+            return self.async_abort(reason="not_loaded")
+
+        ha_users = [
+            u
+            for u in await self.hass.auth.async_get_users()
+            if u.is_active and not u.system_generated
+        ]
+        # HA can't translate dynamic field names, so the user's name is the label
+        labels: dict[str, str] = {}
+        for user in sorted(ha_users, key=lambda u: (u.name or "").casefold()):
+            label = user.name or user.id
+            while label in labels:
+                label += " "
+            labels[label] = user.id
+
+        current = dict(entry.options.get(CONF_USER_MAP) or {})
+        if user_input is not None:
+            user_map = {
+                labels[label]: value
+                for label, value in user_input.items()
+                if label in labels and value and value != NOT_LINKED
+            }
+            return self.async_create_entry(
+                data={
+                    CONF_USER_MAP: user_map,
+                    CONF_PEOPLE_FOLDER: bool(user_input.get(CONF_PEOPLE_FOLDER)),
+                    CONF_ADD_SESSION_USER: bool(user_input.get(CONF_ADD_SESSION_USER)),
+                }
+            )
+
+        choices = [SelectOptionDict(value=NOT_LINKED, label="Not linked")] + [
+            SelectOptionDict(value=user_id, label=name)
+            for user_id, name in sorted(runtime.users.items(), key=lambda i: i[1].casefold())
+        ]
+        fields: dict[Any, Any] = {}
+        for label, ha_id in labels.items():
+            default = current.get(ha_id, NOT_LINKED)
+            if default not in runtime.users:
+                default = NOT_LINKED
+            fields[vol.Optional(label, default=default)] = SelectSelector(
+                SelectSelectorConfig(options=choices, mode=SelectSelectorMode.DROPDOWN)
+            )
+        fields[
+            vol.Optional(CONF_PEOPLE_FOLDER, default=bool(entry.options.get(CONF_PEOPLE_FOLDER)))
+        ] = BooleanSelector()
+        fields[
+            vol.Optional(
+                CONF_ADD_SESSION_USER, default=bool(entry.options.get(CONF_ADD_SESSION_USER))
+            )
+        ] = BooleanSelector()
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(fields),
+            description_placeholders={
+                "note": ""
+                if runtime.is_admin
+                else "\n\n**Note:** Jellyfin Plus is not logged in as an administrator, "
+                "so only its own Jellyfin user can be linked."
             },
         )

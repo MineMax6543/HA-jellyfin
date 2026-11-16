@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_URL, Platform
+from homeassistant.const import CONF_URL, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv, device_registry as dr
@@ -43,6 +43,8 @@ from .const import (
 )
 from .coordinator import JellyfinCoordinator
 from .segments import SegmentWatcher
+from .services import async_register_services
+from .users import ha_user_for
 from .sessions import PlaybackEvent, SessionTracker
 from .trace import Trace, session_summary
 
@@ -58,6 +60,12 @@ PLATFORMS = [
     Platform.UPDATE,
 ]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Register the watched/favorite actions once."""
+    async_register_services(hass)
+    return True
 MAX_ANNOUNCED_PER_BATCH = 50
 
 
@@ -84,9 +92,22 @@ class JellyfinRuntime:
     trace: Trace = field(default_factory=Trace)
     # Live media player entities (entity_id -> entity), for diagnostics
     players: dict[str, Any] = field(default_factory=dict)
+    login_user_name: str | None = None
 
     def session_for(self, device_id: str) -> dict[str, Any] | None:
         return self.sessions.get(device_id)
+
+    @property
+    def users(self) -> dict[str, str]:
+        """Jellyfin user id -> name (all users for admins, else just the login user)."""
+        result = {
+            u["Id"]: u.get("Name") or u["Id"]
+            for u in (self.coordinator.data or {}).get("users") or []
+            if u.get("Id")
+        }
+        if self.client.user_id and self.client.user_id not in result:
+            result[self.client.user_id] = self.login_user_name or self.client.user_id
+        return result
 
     @property
     def connected(self) -> bool:
@@ -123,6 +144,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
         coordinator=coordinator,
     )
     entry.runtime_data = runtime
+    runtime.login_user_name = entry.data.get(CONF_USERNAME)
     await coordinator.async_config_entry_first_refresh()
 
     server_device = dr.async_get(hass).async_get_or_create(
@@ -203,7 +225,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: JellyfinConfigEntry) -> 
         on_connected=_on_connected,
     )
     runtime.listener.start()
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: JellyfinConfigEntry) -> None:
+    """Linked users or multi-user options changed: rebuild everything."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 def _latest_by_device(
@@ -235,6 +263,7 @@ def _handle_playback_event(
         "action": event.action,
         "server_name": runtime.server_name,
         "config_entry_id": entry.entry_id,
+        "ha_user_id": ha_user_for(entry, event.data.get("user_id")),
         **event.data,
     }
     hass.bus.async_fire(EVENT_PLAYBACK, payload)

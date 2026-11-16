@@ -20,6 +20,13 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, SIGNAL_CONNECTION, SIGNAL_SESSIONS, SIGNAL_TASKS
+from .person import (
+    linked_people,
+    person_data,
+    person_device_info,
+    person_unique_id,
+    sessions_of,
+)
 
 if TYPE_CHECKING:
     from . import JellyfinConfigEntry, JellyfinRuntime
@@ -132,6 +139,9 @@ async def async_setup_entry(
         if runtime.is_admin or not desc.admin_only
     ]
     entities.append(JellyfinNextUpSensor(entry, runtime))
+    for user_id, name in linked_people(entry).items():
+        entities.append(JellyfinPersonNextUpSensor(entry, runtime, user_id, name))
+        entities.append(JellyfinPersonWatchingSensor(entry, runtime, user_id, name))
     counts = (runtime.coordinator.data or {}).get("counts") or {}
     entities.extend(
         JellyfinCountSensor(runtime, key, field)
@@ -321,3 +331,79 @@ class JellyfinStorageSensor(_CoordinatorSensor):
         if isinstance(free, int) and isinstance(used, int) and free + used > 0:
             attrs["used_percent"] = round(used / (free + used) * 100, 1)
         return attrs
+
+
+class JellyfinPersonNextUpSensor(JellyfinNextUpSensor):
+    """Next up for one linked person."""
+
+    def __init__(
+        self, entry: JellyfinConfigEntry, runtime: JellyfinRuntime, user_id: str, name: str
+    ) -> None:
+        super().__init__(entry, runtime)
+        self._user_id = user_id
+        self._attr_unique_id = person_unique_id(runtime, user_id, "next_up")
+        self._attr_device_info = person_device_info(runtime, user_id, name)
+
+    @property
+    def _items(self) -> list[dict[str, Any]]:
+        return person_data(self._runtime, self._user_id).get("next_up") or []
+
+
+class JellyfinPersonWatchingSensor(SensorEntity):
+    """What a linked person is watching right now (pushed live)."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_translation_key = "watching"
+
+    def __init__(
+        self, entry: JellyfinConfigEntry, runtime: JellyfinRuntime, user_id: str, name: str
+    ) -> None:
+        self._entry = entry
+        self._runtime = runtime
+        self._user_id = user_id
+        self._attr_unique_id = person_unique_id(runtime, user_id, "watching")
+        self._attr_device_info = person_device_info(runtime, user_id, name)
+
+    @property
+    def _playing(self) -> list[dict[str, Any]]:
+        return [s for s in sessions_of(self._runtime, self._user_id) if s.get("NowPlayingItem")]
+
+    @property
+    def available(self) -> bool:
+        return self._runtime.connected
+
+    @property
+    def native_value(self) -> str:
+        playing = self._playing
+        if not playing:
+            return "nothing"
+        item = playing[0]["NowPlayingItem"]
+        series = item.get("SeriesName")
+        return f"{series}: {item.get('Name')}"[:255] if series else str(item.get("Name"))[:255]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "streams": [
+                {
+                    "device": s.get("DeviceName"),
+                    "title": (s.get("NowPlayingItem") or {}).get("Name"),
+                    "item_type": (s.get("NowPlayingItem") or {}).get("Type"),
+                    "paused": bool((s.get("PlayState") or {}).get("IsPaused")),
+                }
+                for s in self._playing
+            ]
+        }
+
+    async def async_added_to_hass(self) -> None:
+        for signal in (SIGNAL_SESSIONS, SIGNAL_CONNECTION):
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self.hass, signal.format(self._entry.entry_id), self._refresh
+                )
+            )
+
+    @callback
+    def _refresh(self, *_args: Any) -> None:
+        self.async_write_ha_state()

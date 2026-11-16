@@ -26,8 +26,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 import homeassistant.util.dt as dt_util
 
 from .api import JellyfinError
-from .browse_media import async_browse, async_search
-from .const import TICKS_PER_SECOND
+from .browse_media import async_browse, async_search, split_user
+from .const import CONF_ADD_SESSION_USER, CONF_PEOPLE_FOLDER, TICKS_PER_SECOND
 from .entity import (
     JellyfinDeviceEntity,
     async_setup_device_entities,
@@ -35,6 +35,8 @@ from .entity import (
     supported_commands,
     supports_media_control,
 )
+
+from .users import resolve_user, user_map
 
 if TYPE_CHECKING:
     from . import JellyfinConfigEntry
@@ -534,22 +536,65 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         enqueue: MediaPlayerEnqueue | None = None,
         **kwargs: Any,
     ) -> None:
-        """Play a Jellyfin item; resumes where you left off when starting fresh."""
+        """Play a Jellyfin item; resumes where *the right person* left off.
+
+        The person is the one picked in the People folder, else the linked
+        Home Assistant user who triggered this, else the user logged in on
+        the device.
+        """
+        session = self.session
         session_id = self._session_id()
+        tagged_user, item_id = split_user(media_id)
+        ha_user_id = self._context.user_id if self._context else None
+        user_id = tagged_user or resolve_user(
+            self._entry, ha_user_id=ha_user_id, session=session
+        )
         command = _ENQUEUE.get(enqueue, "PlayNow") if enqueue else "PlayNow"
         start_ticks = None
         if command == "PlayNow":
             try:
-                item = await self._runtime.client.item(media_id)
+                item = await self._runtime.client.item(item_id, user_id=user_id)
             except JellyfinError:
                 item = None
             user_data = (item or {}).get("UserData") or {}
             ticks = user_data.get("PlaybackPositionTicks")
             if isinstance(ticks, int) and ticks > 0 and not user_data.get("Played"):
                 start_ticks = ticks
-        await self._run(
-            self._runtime.client.play_items(session_id, [media_id], command, start_ticks)
+        _LOGGER.debug(
+            "%s: play %s for Jellyfin user %s (HA user %s, device user %s), start %s",
+            self.entity_id,
+            item_id,
+            user_id,
+            ha_user_id,
+            (session or {}).get("UserId"),
+            None if start_ticks is None else round(start_ticks / TICKS_PER_SECOND),
         )
+        await self._maybe_add_session_user(session, session_id, user_id)
+        await self._run(
+            self._runtime.client.play_items(session_id, [item_id], command, start_ticks)
+        )
+
+    async def _maybe_add_session_user(
+        self, session: dict[str, Any] | None, session_id: str, user_id: str | None
+    ) -> None:
+        """Shared device: also save progress for the person who started this."""
+        if not user_id or not self._entry.options.get(CONF_ADD_SESSION_USER):
+            return
+        session = session or {}
+        already = {session.get("UserId")} | {
+            u.get("UserId") for u in session.get("AdditionalUsers") or []
+        }
+        if user_id in already:
+            return
+        try:
+            await self._runtime.client.add_session_user(session_id, user_id)
+        except JellyfinError as err:
+            _LOGGER.warning(
+                "%s: could not add Jellyfin user %s to the session: %s",
+                self.entity_id,
+                user_id,
+                err,
+            )
 
     async def async_send_message(
         self, message: str, title: str = "", timeout: int = 10, pause: bool = False
@@ -571,14 +616,34 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
     async def async_browse_media(
         self, media_content_type: str | None = None, media_content_id: str | None = None
     ) -> BrowseMedia:
+        people = None
+        if self._entry.options.get(CONF_PEOPLE_FOLDER):
+            names = self._runtime.users
+            people = {jf: names.get(jf, jf) for jf in sorted(set(user_map(self._entry).values()))}
         try:
-            return await async_browse(self._runtime.client, media_content_id, self._thumb)
+            return await async_browse(
+                self._runtime.client,
+                media_content_id,
+                self._thumb,
+                user_id=self._device_user,
+                people=people,
+            )
         except JellyfinError as err:
             raise HomeAssistantError(f"Jellyfin browse failed: {err}") from err
 
+    @property
+    def _device_user(self) -> str | None:
+        """Jellyfin user logged in on this device (browse/search default)."""
+        return (self.session or {}).get("UserId")
+
     async def async_search_media(self, query: SearchMediaQuery) -> SearchMedia:
         try:
-            results = await async_search(self._runtime.client, query.search_query, self._thumb)
+            results = await async_search(
+                self._runtime.client,
+                query.search_query,
+                self._thumb,
+                user_id=self._device_user,
+            )
         except JellyfinError as err:
             raise HomeAssistantError(f"Jellyfin search failed: {err}") from err
         return SearchMedia(result=results)

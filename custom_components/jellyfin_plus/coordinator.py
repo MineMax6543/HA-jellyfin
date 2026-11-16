@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import JellyfinClient, JellyfinError
-from .const import GITHUB_LATEST_RELEASE, POLL_MINUTES
+from .const import CONF_USER_MAP, GITHUB_LATEST_RELEASE, POLL_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ class JellyfinCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "storage": self.client.storage,
                 "plugins": self.client.plugins,
                 "packages": self.client.packages,
+                "users": self.client.users,
             }
         for key, fetch in parts.items():
             try:
@@ -73,8 +74,25 @@ class JellyfinCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug("Jellyfin %s refresh failed: %s", key, err)
                 data[key] = previous.get(key)
 
+        data["people"] = await self._people(previous.get("people") or {})
         data["latest_release"] = await self._latest_release()
         return data
+
+    async def _people(self, previous: dict[str, Any]) -> dict[str, Any]:
+        """Next up and upcoming episodes for every linked Jellyfin user."""
+        people: dict[str, Any] = {}
+        user_ids = set((self.config_entry.options.get(CONF_USER_MAP) or {}).values())
+        for user_id in sorted(user_ids):
+            try:
+                people[user_id] = {
+                    "next_up": await self.client.next_up(user_id=user_id),
+                    "upcoming": await self.client.upcoming(user_id=user_id),
+                }
+            except JellyfinError as err:
+                _LOGGER.debug("Jellyfin data for user %s failed: %s", user_id, err)
+                if user_id in previous:
+                    people[user_id] = previous[user_id]
+        return people
 
     async def _latest_release(self) -> dict[str, Any]:
         """Latest Jellyfin server release from GitHub (checked every 6 h)."""

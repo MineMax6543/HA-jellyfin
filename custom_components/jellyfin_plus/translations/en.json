@@ -164,6 +164,9 @@
       },
       "books": {
         "name": "Books"
+      },
+      "watching": {
+        "name": "Currently watching"
       }
     },
     "calendar": {
@@ -207,6 +210,79 @@
           "description": "Pause what's playing before showing the message."
         }
       }
+    },
+    "mark_played": {
+      "name": "Mark as watched",
+      "description": "Marks an item as watched for a Jellyfin user.",
+      "fields": {
+        "item_id": {
+          "name": "Item",
+          "description": "Jellyfin item id (e.g. from a playback event's item_id)."
+        },
+        "jellyfin_user": {
+          "name": "Jellyfin user",
+          "description": "Name or id. Default: the linked Jellyfin user of whoever runs this, else the integration's account."
+        },
+        "config_entry_id": {
+          "name": "Server",
+          "description": "Only needed with several Jellyfin servers."
+        }
+      }
+    },
+    "mark_unplayed": {
+      "name": "Mark as unwatched",
+      "description": "Marks an item as unwatched for a Jellyfin user.",
+      "fields": {
+        "item_id": {
+          "name": "Item",
+          "description": "Jellyfin item id (e.g. from a playback event's item_id)."
+        },
+        "jellyfin_user": {
+          "name": "Jellyfin user",
+          "description": "Name or id. Default: the linked Jellyfin user of whoever runs this, else the integration's account."
+        },
+        "config_entry_id": {
+          "name": "Server",
+          "description": "Only needed with several Jellyfin servers."
+        }
+      }
+    },
+    "set_favorite": {
+      "name": "Set favorite",
+      "description": "Adds or removes an item from a Jellyfin user's favorites.",
+      "fields": {
+        "item_id": {
+          "name": "Item",
+          "description": "Jellyfin item id (e.g. from a playback event's item_id)."
+        },
+        "jellyfin_user": {
+          "name": "Jellyfin user",
+          "description": "Name or id. Default: the linked Jellyfin user of whoever runs this, else the integration's account."
+        },
+        "config_entry_id": {
+          "name": "Server",
+          "description": "Only needed with several Jellyfin servers."
+        },
+        "favorite": {
+          "name": "Favorite",
+          "description": "Off removes it from the favorites."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Link users (experimental)",
+        "description": "Link each Home Assistant user to their Jellyfin account. Their progress, watched state and Next up are then used when they start something or run an action, and each linked person gets their own Next up, Currently watching and calendar entities.{note}",
+        "data": {
+          "people_folder": "\"People\" folder in the media browser",
+          "add_session_user": "Also save progress for the person who started playback on a shared device"
+        }
+      }
+    },
+    "abort": {
+      "not_loaded": "Load the integration first (it must be connected to Jellyfin)."
     }
   }
 }
