@@ -170,7 +170,7 @@ works.
 The server update entity asks GitHub for the latest Jellyfin release every 6 hours
 (`api.github.com`, no data about you or your server is sent).
 
-## Multiple users (experimental)
+## Multiple users
 
 Link Home Assistant users to their Jellyfin accounts under *Jellyfin Plus → Configure*.
 Jellyfin always saves progress for the user logged in on the playing device; the links

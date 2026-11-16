@@ -273,7 +273,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "Link users (experimental)",
+        "title": "Link users",
         "description": "Link each Home Assistant user to their Jellyfin account. Their progress, watched state and Next up are then used when they start something or run an action, and each linked person gets their own Next up, Currently watching and calendar entities.{note}",
         "data": {
           "people_folder": "\"People\" folder in the media browser",

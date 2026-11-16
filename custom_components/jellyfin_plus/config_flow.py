@@ -147,7 +147,7 @@ class JellyfinPlusConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class JellyfinPlusOptionsFlow(OptionsFlow):
-    """Link Home Assistant users to Jellyfin users (experimental)."""
+    """Link Home Assistant users to Jellyfin users."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
