@@ -4,6 +4,7 @@ Everything in detail. For a quick start see the [README](../README.md).
 
 - [Login](#login)
 - [Media player](#media-player)
+- [Media panel](#media-panel)
 - [Remote](#remote)
 - [Events](#events)
 - [Sensors and calendar](#sensors-and-calendar)
