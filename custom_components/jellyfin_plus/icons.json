@@ -42,6 +42,9 @@
       },
       "running_tasks": {
         "default": "mdi:progress-clock"
+      },
+      "latest": {
+        "default": "mdi:new-box"
       }
     }
   }
