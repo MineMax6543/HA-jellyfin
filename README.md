@@ -6,7 +6,7 @@
 
 <p align="center">
   Jellyfin in Home Assistant that reacts instantly and doesn't break when an app restarts.<br>
-  <a href="https://github.com/MineMax6543/HA-jellyfin/releases"><img alt="Release" src="https://img.shields.io/github/v/release/MineMax6543/HA-jellyfin"></a>
+  <a href="https://github.com/MineMax6543/ha-jellyfin-plus/releases"><img alt="Release" src="https://img.shields.io/github/v/release/MineMax6543/ha-jellyfin-plus"></a>
   <a href="https://www.home-assistant.io"><img alt="Home Assistant Marketplace" src="https://img.shields.io/badge/Home%20Assistant-Marketplace-41BDF5"></a>
 </p>
 
@@ -21,7 +21,7 @@ reaches Home Assistant **the moment it happens** (no polling), and every Jellyfi
 ## Setup
 
 1. **In Jellyfin:** *Dashboard → API Keys → +*, name it e.g. *Home Assistant*.
-2. **In the Marketplace:** *Settings → Marketplace → Add from link* → `MineMax6543/HA-jellyfin`, install **Jellyfin Plus**, and restart Home Assistant.
+2. **In the Marketplace:** *Settings → Marketplace → Add from link* → `MineMax6543/ha-jellyfin-plus`, install **Jellyfin Plus**, and restart Home Assistant.
 3. **In Home Assistant:** *Settings → Devices & services → Add integration → Jellyfin Plus*, enter your server URL, choose **API key** and paste it.
 
 > **Tip:** you can also log in with **username & password**. Use an administrator account, and on Jellyfin 12 also enable *Allow remote control of other users*.
@@ -189,7 +189,7 @@ data:
 
 | Problem | Fix |
 |---|---|
-| Something behaves oddly | **Jellyfin Plus → ⋮ → Download diagnostics** right after it happened and attach it to an [issue](https://github.com/MineMax6543/HA-jellyfin/issues). Tokens, IPs and user names are removed. |
+| Something behaves oddly | **Jellyfin Plus → ⋮ → Download diagnostics** right after it happened and attach it to an [issue](https://github.com/MineMax6543/ha-jellyfin-plus/issues). Tokens, IPs and user names are removed. |
 | Commands fail with 403 (Jellyfin 12) | Use an API key, or enable *Allow remote control of other users* for the login |
 | Progress bar runs ahead while playing, correct when paused | The clock of the device showing the dashboard is off. Sync its time. |
 | An app has no media player | Only apps that support remote control get one (e.g. not every browser tab) |
