@@ -156,18 +156,28 @@ def async_setup_device_entities(
     platform: str,
     wanted: Callable[[dict[str, Any]], bool],
     factory: Callable[[str, str, str | None], JellyfinDeviceEntity],
+    suffix: str = "",
 ) -> None:
-    """Restore known devices, then add entities for new matching clients."""
+    """Restore known devices, then add entities for new matching clients.
+
+    `suffix` tells several entities of the same platform per device apart
+    (their unique id is `<server>_<device><suffix>`).
+    """
     runtime = entry.runtime_data
     known: set[str] = set()
     prefix = f"{runtime.server_id}_"
 
     restored = []
     for reg_entry in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id):
-        if reg_entry.domain != platform or not reg_entry.unique_id.startswith(prefix):
+        uid = reg_entry.unique_id
+        if reg_entry.domain != platform or not uid.startswith(prefix):
             continue
-        device_id = reg_entry.unique_id[len(prefix) :]
-        device = find_device(hass, entry, reg_entry.unique_id)
+        if suffix:
+            if not uid.endswith(suffix):
+                continue
+            uid = uid[: -len(suffix)]
+        device_id = uid[len(prefix) :]
+        device = find_device(hass, entry, uid)
         known.add(device_id)
         restored.append(
             factory(

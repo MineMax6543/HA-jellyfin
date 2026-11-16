@@ -58,6 +58,7 @@ PLATFORMS = [
     Platform.EVENT,
     Platform.MEDIA_PLAYER,
     Platform.REMOTE,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.UPDATE,
 ]

@@ -48,6 +48,8 @@ it connects and kept from then on (tied to the device, not the session).
 - **Browse / search:** every library, with *Continue watching* and *Next up* at the top.
 - **Resume protection:** if an app restarts the item after "continue", Jellyfin Plus seeks
   back to where you paused and logs a warning.
+- **Audio track / Subtitles:** two selects per app (if it supports switching tracks), available
+  while something is playing. Picking an option switches the track on the TV.
 - **Message on the screen:** `jellyfin_plus.send_message` (see [Actions](#actions)).
 
 ## Remote
