@@ -19,7 +19,13 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, SIGNAL_CONNECTION, SIGNAL_SESSIONS, SIGNAL_TASKS
+from .const import (
+    DOMAIN,
+    SIGNAL_CONNECTION,
+    SIGNAL_LIBRARY,
+    SIGNAL_SESSIONS,
+    SIGNAL_TASKS,
+)
 from .person import (
     linked_people,
     person_data,
@@ -139,6 +145,7 @@ async def async_setup_entry(
         if runtime.is_admin or not desc.admin_only
     ]
     entities.append(JellyfinNextUpSensor(entry, runtime))
+    entities.append(JellyfinLatestSensor(entry, runtime))
     for user_id, name in linked_people(entry).items():
         entities.append(JellyfinPersonNextUpSensor(entry, runtime, user_id, name))
         entities.append(JellyfinPersonWatchingSensor(entry, runtime, user_id, name))
@@ -277,6 +284,66 @@ class JellyfinNextUpSensor(_CoordinatorSensor):
                 for item in self._items[:20]
             ]
         }
+
+
+class JellyfinLatestSensor(_CoordinatorSensor):
+    """Title of the newest item, the newest items (with posters) as attribute.
+
+    Refreshes right after Jellyfin reports new library items, not only every
+    5 minutes.
+    """
+
+    _attr_translation_key = "latest"
+
+    def __init__(self, entry: JellyfinConfigEntry, runtime: JellyfinRuntime) -> None:
+        super().__init__(runtime, "latest")
+        self._entry = entry
+
+    @property
+    def _items(self) -> list[dict[str, Any]]:
+        return (self.coordinator.data or {}).get("latest") or []
+
+    @staticmethod
+    def _title(item: dict[str, Any]) -> str | None:
+        if item.get("Type") == "Episode" and item.get("SeriesName"):
+            return (
+                f"{item['SeriesName']} S{item.get('ParentIndexNumber') or 0:02}"
+                f"E{item.get('IndexNumber') or 0:02}"
+            )
+        return item.get("Name")
+
+    @property
+    def native_value(self) -> str | None:
+        return self._title(self._items[0]) if self._items else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        from . import library_item_data  # noqa: PLC0415 - avoid an import cycle
+
+        return {
+            "items": [
+                {
+                    "label": self._title(item),
+                    **library_item_data(self._runtime, item),
+                    "added": item.get("DateCreated"),
+                }
+                for item in self._items
+            ]
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_LIBRARY.format(self._entry.entry_id),
+                self._on_library,
+            )
+        )
+
+    @callback
+    def _on_library(self, *_args: Any) -> None:
+        self.hass.async_create_task(self.coordinator.async_request_refresh())
 
 
 class JellyfinStorageSensor(_CoordinatorSensor):

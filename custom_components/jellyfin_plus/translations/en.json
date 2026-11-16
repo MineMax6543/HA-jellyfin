@@ -199,6 +199,9 @@
       },
       "watching": {
         "name": "Currently watching"
+      },
+      "latest": {
+        "name": "Recently added"
       }
     },
     "calendar": {

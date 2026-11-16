@@ -238,6 +238,23 @@ class JellyfinClient:
         """Number of movies, series, episodes, songs, ... visible to this user."""
         return await self._call("GET", "/Items/Counts", {"userId": self._uid(user_id)}) or {}
 
+    async def latest(self, limit: int = 15, user_id: str | None = None) -> list[dict[str, Any]]:
+        """Newest movies, episodes, albums, ... (newest first)."""
+        return (
+            await self._call(
+                "GET",
+                "/Items/Latest",
+                {
+                    "userId": self._uid(user_id),
+                    "limit": limit,
+                    "groupItems": "false",
+                    "includeItemTypes": "Movie,Episode,MusicAlbum,MusicVideo,Video",
+                    "fields": "DateCreated",
+                },
+            )
+            or []
+        )
+
     async def upcoming(
         self, limit: int = 100, user_id: str | None = None
     ) -> list[dict[str, Any]]:

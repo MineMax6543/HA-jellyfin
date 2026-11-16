@@ -39,6 +39,13 @@ NEXT_UP = [{"Id": "nx1", "Name": "Pilot", "SeriesName": "Severance", "ParentInde
             "IndexNumber": 1}]
 TASKS = [{"Id": "t1", "Name": "Scan Media Library", "State": "Idle"}]
 USERS = [{"Id": "u1", "Name": "max"}, {"Id": "u2", "Name": "kai"}]
+LATEST = [
+    {"Id": "ep9", "Name": "Cold Harbor", "Type": "Episode", "SeriesName": "Severance",
+     "SeriesId": "sev", "SeriesPrimaryImageTag": "st", "ParentIndexNumber": 1,
+     "IndexNumber": 7, "DateCreated": "2026-11-16T08:00:00Z"},
+    {"Id": "m2", "Name": "Arrival", "Type": "Movie", "ProductionYear": 2016,
+     "ImageTags": {"Primary": "mt"}, "DateCreated": "2026-11-15T20:00:00Z"},
+]
 COUNTS = {"MovieCount": 412, "SeriesCount": 37, "EpisodeCount": 1503, "SongCount": 0,
           "AlbumCount": 0, "ArtistCount": 0, "BoxSetCount": 12, "BookCount": 0}
 
@@ -100,6 +107,7 @@ def fake_listener() -> Generator[type[FakeListener]]:
         patch.object(JellyfinClient, "next_up", AsyncMock(return_value=NEXT_UP)),
         patch.object(JellyfinClient, "scheduled_tasks", AsyncMock(return_value=TASKS)),
         patch.object(JellyfinClient, "item_counts", AsyncMock(return_value=COUNTS)),
+        patch.object(JellyfinClient, "latest", AsyncMock(return_value=LATEST)),
         patch.object(JellyfinClient, "users", AsyncMock(return_value=USERS)),
         patch.object(
             JellyfinClient, "me", AsyncMock(return_value={"Policy": {"IsAdministrator": True}})

@@ -117,6 +117,7 @@ Session and playback entries only go to the bus event.
 |---|---|
 | *Next up* | episodes in Jellyfin's Next up, list in `episodes` |
 | *Movies*, *Series*, *Episodes*, *Songs*, *Albums*, *Artists* | library counts (*Music videos*, *Collections*, *Books* if present) |
+| *Recently added* | newest movie/episode/album; the newest 15 in `items` (title, `item_id`, `image_url`, `added`). Refreshes as soon as something is added |
 | *Active streams* | playing apps, list in `streams` |
 | *Transcoding streams*, *Streaming bandwidth* | of those streams |
 | *Connected clients* | connected apps, list in `clients` |
