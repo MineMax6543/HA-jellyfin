@@ -300,6 +300,28 @@
           "description": "Off removes it from the favorites."
         }
       }
+    },
+    "sleep_timer": {
+      "name": "Sleep timer",
+      "description": "Pauses or stops playback after some minutes or when the current movie/episode ends.",
+      "fields": {
+        "minutes": {
+          "name": "Minutes",
+          "description": "Countdown in minutes."
+        },
+        "end_of_item": {
+          "name": "At the end of this item",
+          "description": "Instead of minutes: act when the current movie, episode or song ends (before the next one starts)."
+        },
+        "action": {
+          "name": "Action",
+          "description": "Pause (default) or stop."
+        }
+      }
+    },
+    "cancel_sleep_timer": {
+      "name": "Cancel sleep timer",
+      "description": "Cancels the media player's sleep timer."
     }
   },
   "options": {
