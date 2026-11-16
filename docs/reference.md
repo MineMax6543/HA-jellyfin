@@ -50,6 +50,14 @@ it connects and kept from then on (tied to the device, not the session).
   back to where you paused and logs a warning.
 - **Message on the screen:** `jellyfin_plus.send_message` (see [Actions](#actions)).
 
+## Media panel
+
+Jellyfin appears under **Media** in the sidebar. Songs and videos picked there play on *any*
+media player (HomePod via AirPlay, Sonos, Chromecast, …), not just Jellyfin apps: songs as
+MP3, videos as HLS (H.264/AAC), transcoded by Jellyfin if needed. The player must be able to
+reach your Jellyfin URL. Albums and seasons can be browsed, but songs and episodes are played
+one at a time.
+
 ## Remote
 
 `remote.send_command` with Jellyfin command names (`MoveUp`, `Select`, `Back`, `GoHome`, …)

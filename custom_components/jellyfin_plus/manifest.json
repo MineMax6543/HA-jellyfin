@@ -1,6 +1,7 @@
 {
   "domain": "jellyfin_plus",
   "name": "Jellyfin Plus",
+  "after_dependencies": ["media_source"],
   "categories": ["media_entertainment.tv_streaming"],
   "codeowners": ["@MineMax6543"],
   "config_flow": true,
