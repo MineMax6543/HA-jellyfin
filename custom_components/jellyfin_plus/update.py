@@ -27,6 +27,34 @@ def _newer(a: str | None, b: str | None) -> bool:
         return False
 
 
+# Old copies Jellyfin keeps on disk next to the version in use
+_OUTDATED_STATUSES = {"Superceded", "Superseded", "Deleted"}
+
+
+def current_plugins(plugins: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
+    """One entry per plugin id.
+
+    Jellyfin lists a plugin once per version folder (e.g. the old version next
+    to a freshly installed one). Prefer versions in use, then the newest.
+    """
+    result: dict[str, dict[str, Any]] = {}
+    for plugin in plugins or []:
+        plugin_id = plugin.get("Id")
+        if not plugin_id:
+            continue
+        current = result.get(plugin_id)
+        if current is None:
+            result[plugin_id] = plugin
+            continue
+        new_old = plugin.get("Status") in _OUTDATED_STATUSES
+        cur_old = current.get("Status") in _OUTDATED_STATUSES
+        if (cur_old and not new_old) or (
+            cur_old == new_old and _newer(plugin.get("Version"), current.get("Version"))
+        ):
+            result[plugin_id] = plugin
+    return result
+
+
 def latest_compatible(package: dict[str, Any], server_version: str | None) -> dict[str, Any] | None:
     """Newest package version whose targetAbi the server satisfies."""
     best: dict[str, Any] | None = None
@@ -50,9 +78,9 @@ async def async_setup_entry(
     entities: list[UpdateEntity] = [JellyfinServerUpdate(runtime)]
     data = runtime.coordinator.data or {}
     packages = {p.get("guid"): p for p in data.get("packages") or []}
-    for plugin in data.get("plugins") or []:
-        if plugin.get("Id") in packages:
-            entities.append(JellyfinPluginUpdate(runtime, plugin["Id"], plugin.get("Name")))
+    for plugin_id, plugin in current_plugins(data.get("plugins")).items():
+        if plugin_id in packages:
+            entities.append(JellyfinPluginUpdate(runtime, plugin_id, plugin.get("Name")))
     async_add_entities(entities)
 
 
@@ -112,9 +140,7 @@ class JellyfinPluginUpdate(_Base):
 
     @property
     def _plugin(self) -> dict[str, Any]:
-        return next(
-            (p for p in self._data.get("plugins") or [] if p.get("Id") == self._plugin_id), {}
-        )
+        return current_plugins(self._data.get("plugins")).get(self._plugin_id, {})
 
     @property
     def _package(self) -> dict[str, Any] | None:

@@ -189,6 +189,7 @@ class JellyfinClient:
         item_ids: list[str],
         play_command: str = "PlayNow",
         start_ticks: int | None = None,
+        start_index: int | None = None,
     ) -> None:
         """PlayNow / PlayNext / PlayLast / PlayShuffle the given items."""
         await self._call(
@@ -198,6 +199,7 @@ class JellyfinClient:
                 "playCommand": play_command,
                 "itemIds": ",".join(item_ids),
                 "startPositionTicks": start_ticks,
+                "startIndex": start_index,
             },
         )
 

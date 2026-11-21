@@ -99,7 +99,7 @@ class JellyfinRemote(JellyfinDeviceEntity, RemoteEntity):
     async def async_send_command(self, command: Iterable[str], **kwargs: Any) -> None:
         session = self.session
         if not session or not session.get("Id"):
-            raise HomeAssistantError(f"{self.device_id} is not connected to Jellyfin")
+            raise HomeAssistantError(f"{self.display_name} is not connected to Jellyfin")
         repeats = int(kwargs.get(ATTR_NUM_REPEATS) or 1)
         delay = float(kwargs.get(ATTR_DELAY_SECS) or 0)
         names = [ALIASES.get(c.strip().lower(), c.strip()) for c in command]

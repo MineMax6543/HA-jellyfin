@@ -114,6 +114,16 @@ class JellyfinDeviceEntity(Entity):
         )
 
     @property
+    def display_name(self) -> str:
+        """Readable device name for messages (device ids can be long base64 strings)."""
+        if self.registry_entry and self.registry_entry.device_id:
+            device = dr.async_get(self.hass).async_get(self.registry_entry.device_id)
+            if device and (device.name_by_user or device.name):
+                return device.name_by_user or device.name
+        info = self._attr_device_info or {}
+        return info.get("name") or "This Jellyfin app"
+
+    @property
     def session(self) -> dict[str, Any] | None:
         """Current session of this device, None if the app isn't connected."""
         return self._runtime.session_for(self.device_id)

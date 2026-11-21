@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
 import time
@@ -51,7 +52,26 @@ POSITION_TOLERANCE = 2
 # Resume protection: if an app restarts the item after "Unpause", seek back
 RESUME_GUARD_SECONDS = 20
 RESTART_THRESHOLD = 5
-MIN_RESTORE_POSITION = 15
+MIN_RESTORE_POSITION = 3
+# Some apps (Jellyfin Web) answer "Unpause" by starting the queue over with a
+# different item. That happens right away; later item changes are the user's.
+ITEM_SWITCH_SECONDS = 5
+# An item this close to its end may move on to the next one by itself
+NATURAL_END_SECONDS = 10
+MAX_QUEUE_RESTORE = 300
+
+
+@dataclass
+class ResumeGuard:
+    """What was playing when we sent "Unpause", to undo a misbehaving app."""
+
+    item_id: str
+    position: float
+    runtime: float | None
+    started: float
+
+    def seconds_left(self, now: float) -> float:
+        return max(self.started + RESUME_GUARD_SECONDS - now, 0)
 
 _BASE_FEATURES = (
     MediaPlayerEntityFeature.PLAY
@@ -145,7 +165,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         self._paused_override: bool | None = None
         self._override_until = 0.0
         # (item id, position, deadline) while watching for a restart after resume
-        self._resume_guard: tuple[str, float, float] | None = None
+        self._resume_guard: ResumeGuard | None = None
         self._sleep: SleepTimer | None = None
 
     # ---- helpers ----------------------------------------------------------
@@ -161,7 +181,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
     def _session_id(self) -> str:
         session = self.session
         if not session or not session.get("Id"):
-            raise HomeAssistantError(f"{self.name or self.device_id} is not connected to Jellyfin")
+            raise HomeAssistantError(f"{self.display_name} is not connected to Jellyfin")
         return session["Id"]
 
     async def _run(self, coro) -> None:
@@ -306,19 +326,63 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         guard = self._resume_guard
         if guard is None:
             return
-        guard_item, guard_position, deadline = guard
-        if time.monotonic() > deadline or item_id != guard_item:
+        elapsed = time.monotonic() - guard.started
+        if elapsed > RESUME_GUARD_SECONDS:
             self._resume_guard = None
-        elif reported <= RESTART_THRESHOLD:
+        elif item_id != guard.item_id:
+            self._resume_guard = None
+            near_end = (
+                guard.runtime is not None
+                and guard.runtime - guard.position < NATURAL_END_SECONDS
+            )
+            if elapsed <= ITEM_SWITCH_SECONDS and reported <= RESTART_THRESHOLD and not near_end:
+                _LOGGER.warning(
+                    "%s switched to another item after resume; going back to %s at %ss",
+                    self.entity_id,
+                    guard.item_id,
+                    round(guard.position),
+                )
+                self.hass.async_create_task(self._restore_item(guard))
+        elif guard.position < MIN_RESTORE_POSITION:
+            self._resume_guard = None  # too early in the item to matter
+        elif reported <= min(RESTART_THRESHOLD, guard.position - 2):
             self._resume_guard = None
             _LOGGER.warning(
                 "%s restarted the item from the beginning after resume; seeking back to %ss",
                 self.entity_id,
-                round(guard_position),
+                round(guard.position),
             )
-            self.hass.async_create_task(self._seek_back(guard_position))
-        elif reported >= guard_position + 2:
+            self.hass.async_create_task(self._seek_back(guard.position))
+        elif reported >= guard.position + 2:
             self._resume_guard = None  # resumed where it was: all good
+
+    async def _restore_item(self, guard: ResumeGuard) -> None:
+        """Play the item from before the resume again, keeping the queue if possible."""
+        session = self.session or {}
+        session_id = session.get("Id")
+        if not session_id:
+            return
+        queue = [q.get("Id") for q in session.get("NowPlayingQueue") or [] if q.get("Id")]
+        if guard.item_id in queue and len(queue) <= MAX_QUEUE_RESTORE:
+            ids, index = queue, queue.index(guard.item_id)
+        else:
+            ids, index = [guard.item_id], None
+        ticks = int(guard.position * TICKS_PER_SECOND) if guard.position >= 1 else None
+        self._runtime.trace.add(
+            "command",
+            entity=self.entity_id,
+            command="RestoreItem",
+            item=guard.item_id,
+            seek=round(guard.position, 2),
+            queue=len(ids),
+            session=session_id,
+        )
+        try:
+            await self._run(
+                self._runtime.client.play_items(session_id, ids, "PlayNow", ticks, index)
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning("%s: could not go back to the item: %s", self.entity_id, err)
 
     async def _seek_back(self, position: float) -> None:
         try:
@@ -363,9 +427,9 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
             "resume_guard": None
             if guard is None
             else {
-                "item_id": guard[0],
-                "position": guard[1],
-                "seconds_left": round(max(guard[2] - now, 0), 1),
+                "item_id": guard.item_id,
+                "position": guard.position,
+                "seconds_left": round(guard.seconds_left(now), 1),
             },
         }
 
@@ -404,7 +468,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         if end_of_item:
             item = self._item
             if not item:
-                raise HomeAssistantError(f"Nothing is playing on {self.name or self.device_id}")
+                raise HomeAssistantError(f"Nothing is playing on {self.display_name}")
             self._sleep.start_end_of_item(
                 item.get("Id"),
                 self._remaining(),
@@ -560,11 +624,13 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         position = self._extrapolate(self._last_paused)
         await self._playstate("Unpause")
         item = self._item
-        if item and position is not None and position >= MIN_RESTORE_POSITION:
-            self._resume_guard = (
-                item.get("Id"),
+        if item and item.get("Id") and position is not None:
+            runtime = item.get("RunTimeTicks")
+            self._resume_guard = ResumeGuard(
+                item["Id"],
                 position,
-                time.monotonic() + RESUME_GUARD_SECONDS,
+                runtime / TICKS_PER_SECOND if runtime else None,
+                time.monotonic(),
             )
         self._set_optimistic(paused=False)
 
@@ -580,16 +646,21 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         else:
             await self.async_media_play()
 
+    # Commands that change item or position on purpose end the resume protection
     async def async_media_stop(self) -> None:
+        self._resume_guard = None
         await self._playstate("Stop")
 
     async def async_media_next_track(self) -> None:
+        self._resume_guard = None
         await self._playstate("NextTrack")
 
     async def async_media_previous_track(self) -> None:
+        self._resume_guard = None
         await self._playstate("PreviousTrack")
 
     async def async_media_seek(self, position: float) -> None:
+        self._resume_guard = None
         await self._playstate("Seek", int(position * TICKS_PER_SECOND))
         self._anchor(position)
         self.async_write_ha_state()
@@ -627,6 +698,7 @@ class JellyfinMediaPlayer(JellyfinDeviceEntity, MediaPlayerEntity):
         """
         session = self.session
         session_id = self._session_id()
+        self._resume_guard = None
         tagged_user, item_id = split_user(media_id)
         ha_user_id = self._context.user_id if self._context else None
         user_id = tagged_user or resolve_user(
